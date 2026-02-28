@@ -3,14 +3,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLanguage } from './context/LanguageContext';
 
 const { width, height } = Dimensions.get('window');
 
 // Local gold video asset
-const GOLD_VIDEO_SOURCE = require('../assets/images/vecteezy_animation-gold-background-4k-footage_1797386.mp4');
+const GOLD_VIDEO_SOURCE = require('../assets/images/bg.mp4');
+const LOGO_SOURCE = require('../assets/images/Logo.jpeg');
 
 export default function GetStartedScreen() {
   const router = useRouter();
@@ -86,7 +87,11 @@ export default function GetStartedScreen() {
         {/* Animated Top Header Logo */}
         <Animated.View style={[styles.header, { opacity: headerOpacity, transform: [{ translateY: headerSlide }] }]}>
           <View style={styles.logoBox}>
-             <Ionicons name="caret-up" size={32} color="#C69320" style={{ transform: [{ scaleY: 1.5 }] }} />
+            <Image 
+              source={LOGO_SOURCE} 
+              style={styles.logoImage} 
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.headerLogoText}>{t('splash')?.title || "Swarna Sakhi"}</Text>
           <Text style={styles.headerSubLogoText}>DIGITAL VAULT</Text>
@@ -158,7 +163,7 @@ const styles = StyleSheet.create({
   logoBox: {
     width: 64,
     height: 64,
-    borderRadius: 24,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -168,6 +173,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   headerLogoText: {
     color: '#FFF',

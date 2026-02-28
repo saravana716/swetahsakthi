@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Easing, Image, StyleSheet, Text, View } from 'react-native';
 import { useLanguage } from './context/LanguageContext';
 
 const { width } = Dimensions.get('window');
+const LOGO_SOURCE = require('../assets/images/Logo.jpeg');
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -87,11 +88,11 @@ export default function SplashScreen() {
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <Animated.View style={[styles.logoCircle, { transform: [{ rotate: spin }] }]}>
-          <Animated.View style={[styles.chartContainer, { transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-360deg'] }) }] }]}>
-            <Animated.View style={[styles.bar, styles.barLeft, { transform: [{ scaleY: bar1Height }] }]} />
-            <Animated.View style={[styles.bar, styles.barCenter, { transform: [{ scaleY: bar2Height }] }]} />
-            <Animated.View style={[styles.bar, styles.barRight, { transform: [{ scaleY: bar3Height }] }]} />
-          </Animated.View>
+          <Image 
+            source={LOGO_SOURCE} 
+            style={styles.logoImage} 
+            resizeMode="contain"
+          />
         </Animated.View>
 
         <Text style={styles.title}>{t('splash')?.title || "Swarna Sakhi"}</Text>
@@ -139,6 +140,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 30,
     backgroundColor: 'rgba(0,0,0,0.5)',
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   chartContainer: {
     flexDirection: 'row',
