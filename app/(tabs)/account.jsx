@@ -1,291 +1,233 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView as RNSafeAreaView } from 'react-native-safe-area-context';
-import { useLanguage } from '../context/LanguageContext';
-import { useNotifications } from '../context/NotificationContext';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Switch } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import Toast from 'react-native-toast-message';
 
 export default function AccountScreen() {
-  const { language, t } = useLanguage();
-  const { theme, toggleDarkMode } = useTheme();
-  const { notificationsEnabled, toggleNotifications } = useNotifications();
+  const { theme, isDarkMode, toggleDarkMode } = useTheme();
+  const { user, userProfile, logout } = useAuth();
 
-  const a = t('account') || {};
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  
-  const scale = 1; // 1:1 scaling
-  const fs = (size) => {
-    // Dynamically reduce font size for Tamil to prevent layout collapse
-    // Tamil characters are wider and often taller, so 20% reduction fits better
-    const adjustedSize = language === 'ta' ? size * 0.8 : size;
-    return Math.round(adjustedSize * scale);
+  const handleLogout = async () => {
+    try {
+      await logout();
+      Toast.show({ type: 'success', text1: 'Signed Out' });
+    } catch (error) {
+      Toast.show({ type: 'error', text1: 'Logout Failed' });
+    }
   };
 
-  const SettingItem = ({ icon, title, subtitle, showChevron = true, isLast = false, onPress }) => (
+  const SettingItem = ({ icon, title, subtitle, value, onValueChange, isSwitch, isLast, onPress }) => (
     <TouchableOpacity 
-      style={[styles.settingItem, isLast && styles.noBorder, { borderBottomColor: theme.border }]}
+      style={[styles.settingItem, { borderBottomColor: theme.border }, isLast && { borderBottomWidth: 0 }]} 
       onPress={onPress}
       activeOpacity={0.7}
+      disabled={isSwitch}
     >
-      <View style={[styles.settingIconContainer, { backgroundColor: theme.itemBg }]}>
-        <Ionicons name={icon} size={22} color={theme.primary} />
+      <View style={[styles.settingIconWrap, { backgroundColor: theme.itemBg }]}>
+        <Ionicons name={icon} size={20} color={theme.primary} />
       </View>
       <View style={styles.settingInfo}>
-        <Text style={[styles.settingTitle, { fontSize: fs(15), color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">{title}</Text>
-        <Text style={[styles.settingSubtitle, { fontSize: fs(12), color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>
+        <Text style={[styles.settingTitle, { color: theme.textPrimary }]}>{title}</Text>
+        <Text style={[styles.settingSub, { color: theme.textSecondary }]}>{subtitle}</Text>
       </View>
-      {showChevron && <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />}
+      {isSwitch ? (
+        <Switch 
+          value={value} 
+          onValueChange={onValueChange} 
+          trackColor={{ false: isDarkMode ? '#374151' : '#E5E7EB', true: isDarkMode ? '#451a03' : '#FEF08A' }}
+          thumbColor={value ? theme.primary : (isDarkMode ? '#6B7280' : '#F9FAFB')}
+        />
+      ) : (
+        <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+      )}
     </TouchableOpacity>
   );
 
   return (
-    <RNSafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { fontSize: fs(24), color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">{a.title || 'Account'}</Text>
-          <Text style={[styles.headerSubtitle, { fontSize: fs(14), color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{a.subtitle || 'Manage your profile & preferences'}</Text>
+          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Account</Text>
+          <Text style={[styles.headerSub, { color: theme.textSecondary }]}>Manage your profile & preferences</Text>
         </View>
 
         {/* Profile Card */}
-        <View style={[styles.profileCard, { backgroundColor: theme.card, shadowColor: theme.isDarkMode ? '#000' : '#000' }]}>
-          <View style={styles.avatarWrapper}>
-            <View style={[styles.avatarCircle, { backgroundColor: theme.isDarkMode ? '#334155' : '#FEF9C3', borderColor: theme.isDarkMode ? '#475569' : '#FEF08A' }]}>
-              <Text style={[styles.avatarText, { fontSize: fs(32), color: theme.primary }]}>J</Text>
+        <View style={[styles.profileCard, { backgroundColor: theme.card }]}>
+          <View style={styles.avatarWrap}>
+            <View style={[styles.avatar, { backgroundColor: theme.itemBg, borderColor: theme.border }]}>
+              <Text style={[styles.avatarLetter, { color: theme.primary }]}>
+                {userProfile?.displayName ? userProfile.displayName.charAt(0).toUpperCase() : 'J'}
+              </Text>
             </View>
-            <TouchableOpacity style={[styles.cameraBadge, { backgroundColor: theme.card }]}>
-              <Ionicons name="camera" size={14} color={theme.primary} />
+            <TouchableOpacity style={[styles.editBadge, { backgroundColor: theme.card }]}>
+              <Ionicons name="camera" size={12} color={theme.primary} />
             </TouchableOpacity>
           </View>
-
-          <Text style={[styles.userName, { fontSize: fs(20), color: theme.textPrimary }]}>Jxjf ✨</Text>
-          <Text style={[styles.userPhone, { fontSize: fs(14), color: theme.textSecondary }]}>+91 9999999999</Text>
-
-          <View style={[styles.kycBadge, { backgroundColor: theme.isDarkMode ? '#064E3B' : '#F0FDF4' }]}>
-            <View style={[styles.kycDot, { backgroundColor: '#22C55E' }]} />
-            <Text style={[styles.kycText, { fontSize: fs(12), color: '#4ADE80' }]}>{a.kycVerified || 'KYC Verified'}</Text>
+          
+          <Text style={[styles.userName, { color: theme.textPrimary }]}>{userProfile?.displayName || 'Welcome! ✨'}</Text>
+          <Text style={[styles.userPhone, { color: theme.textSecondary }]}>{user?.phoneNumber || '+91 9999999999'}</Text>
+          
+          <View style={[styles.kycBadge, { backgroundColor: isDarkMode ? '#064E3B' : '#ECFDF5' }]}>
+            <View style={[styles.kycDot, { backgroundColor: '#10B981' }]} />
+            <Text style={[styles.kycText, { color: isDarkMode ? '#34D399' : '#059669' }]}>KYC Verified</Text>
           </View>
 
           <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { fontSize: fs(18), color: theme.textPrimary }]}>54</Text>
-              <Text style={[styles.statLabel, { fontSize: fs(10), color: theme.textSecondary }]}>{a.history || 'HISTORY'}</Text>
+            <View style={styles.statBox}>
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>54</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>HISTORY</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { fontSize: fs(18), color: theme.primary }]}>7.93g</Text>
-              <Text style={[styles.statLabel, { fontSize: fs(10), color: theme.textSecondary }]}>{a.wealth || 'WEALTH'}</Text>
+            <View style={styles.statBox}>
+              <Text style={[styles.statValue, { color: theme.primary }]}>7.93g</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>WEALTH</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { fontSize: fs(18), color: theme.textPrimary }]}>6M</Text>
-              <Text style={[styles.statLabel, { fontSize: fs(10), color: theme.textSecondary }]}>{a.tenure || 'TENURE'}</Text>
+            <View style={styles.statBox}>
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>6M</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>TENURE</Text>
             </View>
           </View>
         </View>
 
-        {/* Settings Section */}
-        <Text style={[styles.sectionLabel, { fontSize: fs(12), color: theme.textSecondary }]}>{a.settings || 'SETTINGS'}</Text>
+        {/* Settings Group */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SETTINGS</Text>
+        </View>
         
-        <View style={[styles.settingsCard, { backgroundColor: theme.card }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: theme.card }]}>
           <SettingItem 
             icon="person-outline" 
-            title={a.personalInfo || 'Personal Information'} 
-            subtitle={a.personalInfoSub || 'Name, Email, Phone'} 
-            onPress={() => setIsEditModalVisible(true)}
+            title="Personal Information" 
+            subtitle="Name, Email, Phone" 
           />
           <SettingItem 
             icon="notifications-outline" 
-            title={a.notifications || 'Notifications'} 
-            subtitle={notificationsEnabled ? (t('notifications')?.active || 'Active') : (t('notifications')?.inactive || 'Inactive')} 
-            onPress={toggleNotifications}
+            title="Notifications" 
+            subtitle="Alerts & Updates"
+            isSwitch={true}
+            value={true} // Placeholder for notifications state if not in context
+            onValueChange={() => {}} 
           />
           <SettingItem 
             icon="shield-checkmark-outline" 
-            title={a.security || 'Security & Privacy'} 
-            subtitle={a.securitySub || 'Password, Biometric'} 
+            title="Security & Privacy" 
+            subtitle="Password, Biometric" 
           />
           <SettingItem 
-            icon={theme.isDarkMode ? "sunny-outline" : "moon-outline"} 
-            title={a.appearance || 'Appearance'} 
-            subtitle={theme.isDarkMode ? (a.darkMode || 'Dark Mode') : (a.lightMode || 'Light Mode')} 
-            onPress={toggleDarkMode}
+            icon={isDarkMode ? "sunny-outline" : "moon-outline"} 
+            title="Dark Mode" 
+            subtitle={isDarkMode ? "Dark Theme Active" : "Light Theme Active"}
+            isSwitch={true}
+            value={isDarkMode}
+            onValueChange={toggleDarkMode}
           />
           <SettingItem 
             icon="help-circle-outline" 
-            title={a.help || 'Help & Support'} 
-            subtitle={a.helpSub || 'FAQs, Chat'} 
+            title="Help & Support" 
+            subtitle="FAQs, Contact Us"
             isLast={true}
           />
         </View>
 
-        {/* Logout Button */}
-        <TouchableOpacity style={[styles.logoutButton, { backgroundColor: theme.isDarkMode ? '#450A0A' : '#FEF2F2', borderColor: theme.isDarkMode ? '#7F1D1D' : '#FEE2E2' }]}>
-          <Ionicons name="log-out-outline" size={22} color="#EF4444" style={styles.logoutIcon} />
-          <Text style={[styles.logoutText, { fontSize: fs(16), color: '#EF4444' }]}>{a.logout || 'Log Out'}</Text>
+        {/* Logout */}
+        <TouchableOpacity 
+          style={[styles.logoutBtn, { backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2', borderColor: isDarkMode ? '#7f1d1d' : '#FEE2E2' }]}
+          onPress={handleLogout}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#EF4444" style={{ marginRight: 8 }} />
+          <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
 
+        <Text style={[styles.versionText, { color: theme.textSecondary }]}>Version 1.0.4 (2026)</Text>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
-
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={isEditModalVisible}
-        onRequestClose={() => setIsEditModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { fontSize: fs(20), color: theme.textPrimary }]}>{a.editProfile || 'Edit Profile'}</Text>
-              <TouchableOpacity onPress={() => setIsEditModalVisible(false)}>
-                <Ionicons name="close" size={24} color={theme.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { fontSize: fs(14), color: theme.textSecondary }]}>{a.fullName || 'Full Name'}</Text>
-              <View style={[styles.inputWrapper, { borderBottomColor: theme.border }]}>
-                <TextInput
-                  style={[styles.input, { fontSize: fs(16), color: theme.textPrimary }]}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder={a.fullName || "Full Name"}
-                  placeholderTextColor={theme.textSecondary}
-                  selectTextOnFocus={true}
-                />
-                {name.length > 0 && (
-                  <TouchableOpacity onPress={() => setName('')} style={styles.clearButton}>
-                    <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { fontSize: fs(14), color: theme.textSecondary }]}>{a.email || 'Email'}</Text>
-              <View style={[styles.inputWrapper, { borderBottomColor: theme.border }]}>
-                <TextInput
-                  style={[styles.input, { fontSize: fs(16), color: theme.textPrimary }]}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder={a.email || "Email"}
-                  placeholderTextColor={theme.textSecondary}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  selectTextOnFocus={true}
-                />
-                {email.length > 0 && (
-                  <TouchableOpacity onPress={() => setEmail('')} style={styles.clearButton}>
-                    <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            <TouchableOpacity 
-              style={[styles.saveButton, { backgroundColor: theme.primary, shadowColor: theme.primary }]} 
-              onPress={() => setIsEditModalVisible(false)}
-            >
-              <Text style={[styles.saveButtonText, { fontSize: fs(16), color: '#FFF' }]}>{a.saveChanges || 'Save Changes'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </RNSafeAreaView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FAFAF4', // Very light tint as seen in screenshot
-  },
-  container: {
-    flex: 1,
   },
   scrollContent: {
-    paddingBottom: 120, // Increased to account for floating tab bar
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
   header: {
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? 20 : 10,
-    paddingBottom: 24,
+    paddingVertical: 16,
+    marginTop: Platform.OS === 'android' ? 20 : 0,
+    marginBottom: 10,
   },
   headerTitle: {
-    fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: '900',
   },
-  headerSubtitle: {
-    color: '#9CA3AF',
-    fontWeight: '500',
+  headerSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
   },
   profileCard: {
-    backgroundColor: '#FFF',
-    marginHorizontal: 20,
-    borderRadius: 32,
+    borderRadius: 30,
     paddingVertical: 32,
     alignItems: 'center',
-    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.05,
-    shadowRadius: 15,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  avatarWrapper: {
+  avatarWrap: {
     position: 'relative',
     marginBottom: 16,
   },
-  avatarCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#FEF9C3', // Light yellow
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     borderWidth: 1,
-    borderColor: '#FEF08A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  avatarText: {
-    fontWeight: '600',
-    color: '#EAB308',
+  avatarLetter: {
+    fontSize: 32,
+    fontWeight: '700',
   },
-  cameraBadge: {
+  editBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     alignItems: 'center',
-    elevation: 2,
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    elevation: 2,
   },
   userName: {
+    fontSize: 22,
     fontWeight: '800',
-    color: '#1A1A1A',
     marginBottom: 4,
   },
   userPhone: {
-    color: '#9CA3AF',
+    fontSize: 13,
     fontWeight: '600',
     marginBottom: 16,
   },
   kycBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0FDF4', // Light green
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 20,
     marginBottom: 32,
   },
@@ -293,12 +235,11 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#22C55E',
     marginRight: 6,
   },
   kycText: {
-    color: '#16A34A',
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
   },
   statsRow: {
     flexDirection: 'row',
@@ -306,159 +247,86 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 20,
   },
-  statItem: {
+  statBox: {
     flex: 1,
     alignItems: 'center',
   },
   statValue: {
-    fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 2,
   },
   statLabel: {
-    color: '#9CA3AF',
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     letterSpacing: 0.5,
   },
   statDivider: {
     width: 1,
-    height: 30,
-    backgroundColor: '#F3F4F6',
+    height: 24,
   },
-  sectionLabel: {
-    paddingHorizontal: 24,
+  sectionHeader: {
     marginTop: 32,
     marginBottom: 12,
-    fontWeight: '800',
-    color: '#9CA3AF',
-    letterSpacing: 1,
   },
-  settingsCard: {
-    backgroundColor: '#FFF',
-    marginHorizontal: 20,
-    borderRadius: 32,
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  settingsGroup: {
+    borderRadius: 24,
     padding: 8,
-    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 2,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F9FAFB',
   },
-  noBorder: {
-    borderBottomWidth: 0,
-  },
-  settingIconContainer: {
+  settingIconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: '#FFFBF0',
-    justifyContent: 'center',
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 16,
   },
   settingInfo: {
     flex: 1,
   },
   settingTitle: {
-    fontWeight: '700',
-    color: '#1A1A1A',
+    fontSize: 15,
+    fontWeight: '800',
     marginBottom: 2,
   },
-  settingSubtitle: {
-    color: '#9CA3AF',
-    fontWeight: '500',
+  settingSub: {
+    fontSize: 12,
+    fontWeight: '600',
   },
-  logoutButton: {
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FEF2F2',
-    marginHorizontal: 40,
     marginTop: 40,
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
-  },
-  logoutIcon: {
-    marginRight: 8,
-    transform: [{ rotate: '180deg' }], // Match the screenshot icon orientation
   },
   logoutText: {
+    fontSize: 16,
     fontWeight: '800',
     color: '#EF4444',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontWeight: '800',
-    color: '#1A1A1A',
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    color: '#9CA3AF',
+  versionText: {
+    textAlign: 'center',
+    fontSize: 12,
     fontWeight: '600',
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 12,
-    color: '#1A1A1A',
-    fontWeight: '700',
-  },
-  clearButton: {
-    padding: 8,
-  },
-  saveButton: {
-    marginTop: 12,
-    paddingVertical: 18,
-    borderRadius: 20,
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#E07A07',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  saveButtonText: {
-    color: '#FFF',
-    fontWeight: '800',
+    marginTop: 24,
   },
 });

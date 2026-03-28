@@ -19,7 +19,7 @@ export default function ReferralScreen() {
     setIsApplying(true);
     setTimeout(() => {
       setIsApplying(false);
-      router.replace('/(tabs)');
+      router.replace('/login');
     }, 1500);
   };
 
@@ -27,7 +27,7 @@ export default function ReferralScreen() {
     setIsSkipping(true);
     setTimeout(() => {
       setIsSkipping(false);
-      router.replace('/(tabs)');
+      router.replace('/login');
     }, 800);
   };
 

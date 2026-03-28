@@ -124,9 +124,9 @@ const styles = StyleSheet.create({
     borderRadius: 50,
   },
   iconBox: {
-    width: 64,
-    height: 40,
-    borderRadius: 20, // Pill shape for the globe
+    width: 56,
+    height: 36,
+    borderRadius: 18, // Pill shape for the globe
     backgroundColor: '#C69320', // Golden background
     alignItems: 'center',
     justifyContent: 'center',
@@ -142,14 +142,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '800',
     color: '#1A1A1A',
     marginBottom: 8,
     letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#6B7280',
     fontWeight: '500',
     textAlign: 'center',
@@ -188,13 +188,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   langName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 2,
   },
   langNative: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#9CA3AF',
     fontWeight: '500',
   },
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     width: '100%',
-    paddingVertical: 18,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 30,
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 1.5,
   },

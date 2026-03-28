@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -16,6 +16,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
   const { themeColor } = useTheme(); // Keeping themeColor if needed for specific logic, but preferring theme object
   const { language, t } = useLanguage();
   const [modalVisible, setModalVisible] = useState(false);
+  const router = useRouter();
   const scale = 1; 
   const fs = (size) => Math.round((language === 'ta' ? size * 0.8 : size) * scale);
 
@@ -28,31 +29,46 @@ function CustomTabBar({ state, descriptors, navigation }) {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
+        <View style={styles.modalOverlay}>
           <LinearGradient
-            colors={theme.isDarkMode ? ['rgba(15, 23, 42, 0.98)', 'rgba(30, 41, 59, 0.95)'] : ['rgba(255, 255, 255, 0.99)', 'rgba(248, 250, 252, 0.95)']}
+            colors={theme.isDarkMode
+              ? ['rgba(15, 23, 42, 0.97)', 'rgba(30, 41, 59, 0.95)']
+              : ['rgba(255,255,255,0.98)', 'rgba(248,247,244,0.97)']}
             style={StyleSheet.absoluteFill}
           />
-          <Pressable style={[styles.modalCloseBtn, { backgroundColor: theme.card }]} onPress={() => setModalVisible(false)}>
-            <Ionicons name="close" size={24} color={theme.textPrimary} />
+          <Pressable
+            style={[styles.modalCloseBtn, { backgroundColor: theme.card }]}
+            onPress={() => setModalVisible(false)}
+          >
+            <Ionicons name="close" size={22} color={theme.textPrimary} />
           </Pressable>
           <View style={styles.modalGrid}>
             {[
-              { id: 'scan', title: t('scanner')?.scanPay || 'Scan & Pay', sub: 'QR Payments', icon: 'scan-outline' },
-              { id: 'buy', title: t('scanner')?.buySell || 'Buy & Sell', sub: 'Live Rates', icon: 'trending-up-outline' },
-              { id: 'save', title: t('scanner')?.autoSave || 'Auto Save', sub: 'Setup SIP', icon: 'gift-outline' },
-              { id: 'redeem', title: t('scanner')?.redeem || 'Redeem', sub: 'Physical Gold', icon: 'phone-portrait-outline' },
+              { id: 'scan',   title: 'Scan & Pay',  sub: 'QR Payments',   icon: 'scan-outline',            route: 'vault-pay' },
+              { id: 'buy',    title: 'Buy & Sell',   sub: 'Live Rates',    icon: 'trending-up-outline',     route: 'buy' },
+              { id: 'save',   title: 'Auto Save',    sub: 'Setup SIP',     icon: 'gift-outline',            route: 'setup-sip' },
+              { id: 'redeem', title: 'Redeem',       sub: 'Physical Gold', icon: 'phone-portrait-outline',  route: 'redeem' },
             ].map((item) => (
-              <TouchableOpacity key={item.id} style={[styles.modalCard, { backgroundColor: theme.card }]} onPress={() => setModalVisible(false)}>
-                <View style={[styles.modalIconContainer, { backgroundColor: theme.isDarkMode ? '#334155' : '#F8FAFC' }]}>
-                  <Ionicons name={item.icon} size={28} color={theme.primary} />
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.modalCard, { backgroundColor: theme.card }]}
+                activeOpacity={0.75}
+                onPress={() => {
+                  setModalVisible(false);
+                  setTimeout(() => router.push(`/${item.route}`), 150);
+                }}
+              >
+                <View style={[styles.modalIconContainer, { backgroundColor: theme.isDarkMode ? '#1E293B' : '#F8F7F2' }]}>
+                  <Ionicons name={item.icon} size={30} color={theme.primary} />
                 </View>
-                <Text style={[styles.modalCardTitle, { color: theme.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>{item.title}</Text>
+                <Text style={[styles.modalCardTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                  {item.title}
+                </Text>
                 <Text style={[styles.modalCardSub, { color: theme.textSecondary }]}>{item.sub}</Text>
               </TouchableOpacity>
             ))}
           </View>
-        </Pressable>
+        </View>
       </Modal>
 
       <View style={[styles.tabBarContainer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
@@ -95,7 +111,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
         // Determine which icon to show
         let iconName = '';
         if (route.name === 'index') iconName = isFocused ? 'home' : 'home-outline';
-        else if (route.name === 'portfolio') iconName = isFocused ? 'pie-chart' : 'pie-chart-outline';
+        else if (route.name === 'portfolio') iconName = isFocused ? 'time' : 'time-outline';
         else if (route.name === 'orders') iconName = isFocused ? 'bag-handle' : 'bag-handle-outline';
         else if (route.name === 'account') iconName = isFocused ? 'person' : 'person-outline';
 
@@ -110,9 +126,9 @@ function CustomTabBar({ state, descriptors, navigation }) {
               style={styles.centerButtonWrapper}
               activeOpacity={0.8}
             >
-              <View style={[styles.centerButtonGlow, { backgroundColor: theme.isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)' }]}>
-                <View style={[styles.centerButton, { backgroundColor: theme.primary, shadowColor: theme.primary }]}>
-                  <Ionicons name="scan-outline" size={28} color="#FFF" />
+              <View style={[styles.centerButtonGlow, { backgroundColor: isFocused ? 'rgba(212, 175, 55, 0.2)' : 'rgba(0,0,0,0.05)' }]}>
+                <View style={[styles.centerButton, { backgroundColor: '#EAB308', shadowColor: '#EAB308' }]}>
+                  <Ionicons name="scan-outline" size={30} color="#FFF" />
                 </View>
               </View>
             </TouchableOpacity>
@@ -198,52 +214,54 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBarContainer: {
     flexDirection: 'row',
-    height: 76, 
+    height: 70, 
     backgroundColor: '#FFFFFF',
-    borderRadius: 38,
+    borderRadius: 35,
     marginHorizontal: 16,
-    marginBottom: Platform.OS === 'ios' ? 30 : 20,
+    marginBottom: Platform.OS === 'ios' ? 34 : 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
-    shadowRadius: 15,
+    shadowRadius: 20,
     elevation: 8,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 2,
+    paddingVertical: 4,
     minHeight: 64,
   },
   centerButtonWrapper: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ translateY: -15 }], // Adjusted lift for the floating pill
+    transform: [{ translateY: -15 }],
   },
   centerButtonGlow: {
-    padding: 8,
-    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    padding: 6,
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
     borderRadius: 40,
   },
   centerButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 6,
   },
   modalOverlay: {
     flex: 1,

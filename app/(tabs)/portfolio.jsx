@@ -8,7 +8,8 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
+  Platform
 } from 'react-native';
 import Animated, {
   Easing,
@@ -20,23 +21,20 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from 'react-native-svg';
-import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
-const CHART_WIDTH = width - 80;
-const CHART_HEIGHT = 110;
+const CHART_WIDTH = width - 64; // 32 horizontal padding
+const CHART_HEIGHT = 120;
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-// Premium Animated SVG sparkline chart
-function PerformanceChart({ data, themeColor, theme }) {
+function PerformanceChart({ data, themeColor, isDarkMode }) {
   const progress = useSharedValue(0);
   const drawingProgress = useSharedValue(0);
   const prevData = useSharedValue(data);
   const nextData = useSharedValue(data);
 
-  // Trigger data morphing animation
   useEffect(() => {
     prevData.value = nextData.value;
     nextData.value = data;
@@ -44,13 +42,11 @@ function PerformanceChart({ data, themeColor, theme }) {
     progress.value = withTiming(1, { duration: 600, easing: Easing.bezier(0.4, 0, 0.2, 1) });
   }, [data]);
 
-  // Trigger initial drawing animation
   useEffect(() => {
     drawingProgress.value = 0;
     drawingProgress.value = withDelay(400, withTiming(1, { duration: 1500, easing: Easing.out(Easing.exp) }));
   }, []);
 
-  // Compute animated path string
   const animatedPaths = useDerivedValue(() => {
     const interpolatedData = nextData.value.map((v, i) => {
       const p = prevData.value[i] || v;
@@ -70,41 +66,30 @@ function PerformanceChart({ data, themeColor, theme }) {
     const pathD = `M ${points.join(' L ')}`;
     const fillD = `M ${points[0]} L ${points.join(' L ')} L ${CHART_WIDTH},${CHART_HEIGHT} L 0,${CHART_HEIGHT} Z`;
 
-    return {
-      pathD,
-      fillD,
-    };
+    return { pathD, fillD };
   });
 
-  // Calculate length for drawing animation (approximate)
-  const lineLength = CHART_WIDTH * 1.5;
+  const lineLength = CHART_WIDTH * 2;
 
-  const animatedLineProps = useAnimatedProps(() => {
-    return {
-      d: animatedPaths.value.pathD,
-      strokeDashoffset: lineLength * (1 - drawingProgress.value),
-    };
-  });
+  const animatedLineProps = useAnimatedProps(() => ({
+    d: animatedPaths.value.pathD,
+    strokeDashoffset: lineLength * (1 - drawingProgress.value),
+  }));
 
-  const animatedFillProps = useAnimatedProps(() => {
-    return {
-      d: animatedPaths.value.fillD,
-    };
-  });
+  const animatedFillProps = useAnimatedProps(() => ({
+    d: animatedPaths.value.fillD,
+  }));
 
   return (
     <View style={styles.chartContainer}>
       <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
         <Defs>
           <SvgGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={themeColor} stopOpacity="0.4" />
+            <Stop offset="0" stopColor={themeColor} stopOpacity={isDarkMode ? "0.4" : "0.3"} />
             <Stop offset="1" stopColor={themeColor} stopOpacity="0" />
           </SvgGradient>
         </Defs>
-        <AnimatedPath 
-          animatedProps={animatedFillProps} 
-          fill="url(#areaGrad)" 
-        />
+        <AnimatedPath animatedProps={animatedFillProps} fill="url(#areaGrad)" />
         <AnimatedPath
           animatedProps={animatedLineProps}
           fill="none"
@@ -120,206 +105,142 @@ function PerformanceChart({ data, themeColor, theme }) {
 }
 
 export default function PortfolioScreen() {
-  const { language, t } = useLanguage();
-  const { isGold, setIsGold, theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
   const [activePeriod, setActivePeriod] = useState('6M');
-
-  const isEn = language === 'en';
-  const themeColor = isGold ? '#C89421' : '#708090';
-
-  const scale = 1; 
-  const fs = (size) => Math.round((language === 'ta' ? size * 0.8 : size) * scale);
-  const p = t('portfolio') || {};
-
-  // MOCK DATA STRUCTURE - Ready for API integration
+  
   const chartData = {
-    gold: {
-      '1M': [50, 60, 55, 65, 70, 62, 75, 80, 72, 85, 90, 88, 95],
-      '6M': [40, 45, 42, 55, 60, 65, 58, 70, 68, 75, 80, 85, 95],
-      '1Y': [30, 40, 35, 50, 45, 60, 55, 65, 70, 68, 78, 85, 95],
-      'All': [20, 30, 25, 40, 35, 50, 48, 60, 65, 72, 80, 88, 95],
-    },
-    silver: {
-      '1M': [30, 35, 32, 40, 45, 42, 48, 50, 46, 55, 60, 58, 65],
-      '6M': [25, 28, 26, 32, 35, 38, 34, 40, 38, 42, 45, 48, 55],
-      '1Y': [20, 25, 22, 28, 26, 32, 30, 35, 38, 36, 40, 45, 50],
-      'All': [15, 20, 18, 25, 22, 28, 26, 30, 32, 35, 38, 42, 48],
-    }
+    '1M': [50, 60, 55, 65, 70, 62, 75, 80, 72, 85, 90, 88, 95],
+    '6M': [40, 45, 42, 55, 60, 65, 58, 70, 68, 75, 80, 85, 95],
+    '1Y': [30, 40, 35, 50, 45, 60, 55, 65, 70, 68, 78, 85, 95],
+    'All': [20, 30, 25, 40, 35, 50, 48, 60, 65, 72, 80, 88, 95],
   };
-
-  const currentData = isGold ? chartData.gold[activePeriod] : chartData.silver[activePeriod];
-  const periods = ['1M', '6M', '1Y', 'All'];
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.background }]}>
-        <TouchableOpacity style={[styles.headerIconBtn, { backgroundColor: theme.card }]}>
-          <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { fontSize: fs(language === 'ta' ? 26 : 22), color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-          {p.title || 'My Assets'}
-        </Text>
-        <TouchableOpacity style={[styles.headerIconBtn, { backgroundColor: theme.card }]}>
-          <Ionicons name="share-social-outline" size={22} color={theme.textPrimary} />
-        </TouchableOpacity>
-      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={[styles.headerBtn, { backgroundColor: theme.card }]}>
+            <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Assets</Text>
+          <TouchableOpacity style={[styles.headerBtn, { backgroundColor: theme.card }]}>
+            <Ionicons name="share-social-outline" size={22} color={theme.textPrimary} />
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
         {/* Portfolio Value Card */}
-        <View style={[styles.card, { backgroundColor: theme.card, shadowColor: theme.isDarkMode ? '#000' : '#000', elevation: theme.isDarkMode ? 0 : 5 }]}>
-          <View style={styles.cardTopRow}>
-            <Text style={[styles.cardLabel, { fontSize: fs(language === 'ta' ? 15 : 13), color: theme.textSecondary, flex: 1, marginRight: 8 }]} numberOfLines={1} ellipsizeMode="tail">
-              {p.currentValue || 'Current Portfolio Value'}
-            </Text>
-            <View style={[styles.gainBadge, { backgroundColor: theme.isDarkMode ? '#064E3B' : (isGold ? '#ECFDF5' : '#F1F5F9') }]}>
-              <Ionicons name="trending-up" size={13} color={isGold ? '#10B981' : (theme.isDarkMode ? '#22C55E' : '#64748B')} />
-              <Text style={[styles.gainText, { color: isGold ? '#10B981' : (theme.isDarkMode ? '#22C55E' : '#64748B'), fontSize: fs(13) }]}>{"+12.5%"}</Text>
+        <View style={[styles.portfolioCard, { backgroundColor: theme.card }]}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>CURRENT VALUE</Text>
+            <View style={[styles.profitBadge, { backgroundColor: isDarkMode ? '#064E3B' : '#ECFDF5' }]}>
+              <Ionicons name="trending-up" size={12} color="#10B981" />
+              <Text style={styles.profitText}>+12.5%</Text>
             </View>
           </View>
-
-          <Text style={[styles.portfolioValue, { color: theme.textPrimary }]}>₹1,59,385</Text>
-
+          <View style={styles.valueRow}>
+            <Text style={[styles.currency, { color: theme.textPrimary }]}>₹</Text>
+            <Text style={[styles.mainValue, { color: theme.textPrimary }]}>1,59,385</Text>
+            <Text style={[styles.decimals, { color: theme.textSecondary }]}>.40</Text>
+          </View>
+          
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
+          
           <View style={styles.statsRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.statLabel, { fontSize: fs(13), color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-                {p.invested || 'Invested'}
-              </Text>
-              <Text style={[styles.statValue, { fontSize: 18, color: theme.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>₹1,43,000</Text>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Invested</Text>
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>₹1,43,000</Text>
             </View>
-            <View style={{ flex: 1, alignItems: 'flex-end' }}>
-              <Text style={[styles.statLabel, { fontSize: fs(13), color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-                {p.totalReturns || 'Total Returns'}
-              </Text>
-              <Text style={[styles.statValue, { color: isGold ? '#10B981' : theme.primary, fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>{"+ ₹16,385"}</Text>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Returns</Text>
+              <Text style={[styles.statValue, { color: '#10B981' }]}>+ ₹16,385</Text>
             </View>
           </View>
         </View>
 
-        {/* Performance Card */}
-        <View style={[styles.card, { paddingBottom: 20, backgroundColor: theme.card }]}>
-          <View style={styles.performanceHeader}>
-            <Text style={[styles.performanceTitle, { color: theme.textPrimary, flex: 1, marginRight: 8 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-              {p.performance || 'Performance'}
-            </Text>
-            <View style={styles.periodRow}>
-              {periods.map(period => (
-                <TouchableOpacity
-                  key={period}
-                  style={[styles.periodBtn, activePeriod === period && { backgroundColor: theme.primary }]}
-                  onPress={() => setActivePeriod(period)}
+        {/* Performance Chart Card */}
+        <View style={[styles.performanceCard, { backgroundColor: theme.card }]}>
+          <View style={styles.perfHeader}>
+            <Text style={[styles.perfTitle, { color: theme.textPrimary }]}>Performance</Text>
+            <View style={[styles.periodTabs, { backgroundColor: theme.background }]}>
+              {['1M', '6M', '1Y', 'All'].map(p => (
+                <TouchableOpacity 
+                  key={p} 
+                  style={[styles.periodBtn, activePeriod === p && styles.periodBtnActive, activePeriod === p && { backgroundColor: theme.card }]}
+                  onPress={() => setActivePeriod(p)}
                 >
-                  <Text style={[styles.periodText, activePeriod === period ? { color: '#FFF' } : { color: theme.textSecondary }]}>
-                    {period}
-                  </Text>
+                  <Text style={[styles.periodText, { color: theme.textSecondary }, activePeriod === p && { color: theme.textPrimary }]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          <View style={styles.chartWrapper}>
-            <PerformanceChart period={activePeriod} data={currentData} themeColor={theme.primary} theme={theme} />
-          </View>
+          <PerformanceChart data={chartData[activePeriod]} themeColor={theme.primary} isDarkMode={isDarkMode} />
         </View>
 
         {/* Real Gold Jewellery Banner */}
-        <View style={styles.bannerCard}>
+        <View style={styles.banner}>
           <Image
             source={{ uri: 'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?q=80&w=800' }}
-            style={styles.bannerImage}
-            resizeMode="cover"
+            style={styles.bannerImg}
           />
           <LinearGradient
-            colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.2)']}
-            style={StyleSheet.absoluteFillObject}
-            start={{ x: 0, y: 0.5 }}
+            colors={['rgba(0,0,0,0.7)', 'transparent']}
+            style={styles.bannerOverlay}
+            start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0.5 }}
-          />
-          <View style={styles.bannerContent}>
-            <Text style={[styles.bannerTitle, { color: isGold ? '#F5CC50' : '#E5E7EB', fontSize: fs(20) }]} numberOfLines={1} ellipsizeMode="tail">
-              {p.realGold || 'Real Gold Jewellery'}
-            </Text>
-            <Text style={[styles.bannerSub, { fontSize: fs(13) }]} numberOfLines={1} ellipsizeMode="tail">
-              {p.realGoldSub || 'Exchange digital gold for physical art.'}
-            </Text>
+          >
+            <Text style={styles.bannerTitle}>Real Gold Jewellery</Text>
+            <Text style={styles.bannerSub}>Exchange digital gold for physical art.</Text>
             <TouchableOpacity style={styles.bannerBtn}>
-              <Text style={styles.bannerBtnText} numberOfLines={1}>{p.viewAll || 'View all'}</Text>
+              <Text style={styles.bannerBtnText}>View Collection</Text>
             </TouchableOpacity>
-          </View>
+          </LinearGradient>
         </View>
 
         {/* Your Vault Section */}
-        <Text style={[styles.vaultTitle, { color: theme.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-          {p.yourVault || 'Your Vault'}
-        </Text>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Your Vault</Text>
+        </View>
 
-        {/* 24K Pure Gold */}
-        <View style={[styles.vaultItem, { backgroundColor: theme.card }]}>
-          <View style={styles.vaultIconWrap}>
-            <LinearGradient
-              colors={['#FFF8DC', '#F5CC50']}
-              style={styles.vaultIconGrad}
-              start={{ x: 0.2, y: 0.2 }} end={{ x: 0.8, y: 0.8 }}
-            >
-              <View style={[styles.vaultIconCircle, { backgroundColor: theme.isDarkMode ? '#422006' : '#FFF' }]}>
-                <LinearGradient
-                  colors={['#F5CC50', '#C89421']}
-                  style={styles.vaultIconInner}
-                  start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-                />
-              </View>
-            </LinearGradient>
+        {/* Asset Items */}
+        <View style={styles.vaultList}>
+          {/* Gold */}
+          <View style={[styles.assetItem, { backgroundColor: theme.card }]}>
+            <View style={[styles.assetIconContainer, { backgroundColor: theme.background }]}>
+              <LinearGradient colors={['#FDE047', '#D97706']} style={styles.assetIcon}>
+                <Ionicons name="sparkles" size={16} color="#FFF" />
+              </LinearGradient>
+            </View>
+            <View style={styles.assetInfo}>
+              <Text style={[styles.assetName, { color: theme.textPrimary }]}>24K Pure Gold</Text>
+              <Text style={[styles.assetMeta, { color: theme.textSecondary }]}>99.9% Purity • Augmont Secured</Text>
+            </View>
+            <View style={styles.assetValues}>
+              <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>24.50 gm</Text>
+              <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹1,52,000</Text>
+            </View>
           </View>
-          <View style={[styles.vaultInfo, { flex: 2 }]}>
-            <Text style={[styles.vaultName, { fontSize: fs(15), color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-              {p.pure24k || '24K Pure'}
-            </Text>
-            <Text style={[styles.vaultMeta, { fontSize: fs(12), color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit>
-              {p.purity || '99.9% Purity'} • {p.augmont || 'Augmont Secured'}
-            </Text>
-          </View>
-          <View style={styles.vaultRight}>
-            <Text style={[styles.vaultGrams, { color: theme.textPrimary }]}>24.50 gm</Text>
-            <Text style={[styles.vaultRupee, { color: theme.textSecondary }]}>₹1,52,000</Text>
+
+          {/* Silver */}
+          <View style={[styles.assetItem, { backgroundColor: theme.card }]}>
+            <View style={[styles.assetIconContainer, { backgroundColor: theme.background }]}>
+              <LinearGradient colors={['#D1D5DB', '#4B5563']} style={styles.assetIcon}>
+                <Ionicons name="sunny" size={16} color="#FFF" />
+              </LinearGradient>
+            </View>
+            <View style={styles.assetInfo}>
+              <Text style={[styles.assetName, { color: theme.textPrimary }]}>999 Pure Silver</Text>
+              <Text style={[styles.assetMeta, { color: theme.textSecondary }]}>99.9% Purity • Insured Vault</Text>
+            </View>
+            <View style={styles.assetValues}>
+              <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>100.25 gm</Text>
+              <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹7,385</Text>
+            </View>
           </View>
         </View>
 
-        {/* Silver */}
-        <View style={[styles.vaultItem, { backgroundColor: theme.card }]}>
-          <View style={styles.vaultIconWrap}>
-            <LinearGradient
-              colors={['#F3F4F6', '#E5E7EB']}
-              style={styles.vaultIconGrad}
-              start={{ x: 0.2, y: 0.2 }} end={{ x: 0.8, y: 0.8 }}
-            >
-              <View style={[styles.vaultIconCircle, { backgroundColor: theme.isDarkMode ? '#334155' : '#FFF' }]}>
-                <LinearGradient
-                  colors={['#D1D5DB', '#9CA3AF']}
-                  style={styles.vaultIconInner}
-                  start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-                />
-              </View>
-            </LinearGradient>
-          </View>
-          <View style={[styles.vaultInfo, { flex: 2 }]}>
-            <Text style={[styles.vaultName, { fontSize: fs(15), color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-              {p.silver || 'Silver'}
-            </Text>
-            <Text style={[styles.vaultMeta, { fontSize: fs(12), color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit>
-              {p.purity || '99.9% Purity'} • {p.insuredVault || 'Insured Vault'}
-            </Text>
-          </View>
-          <View style={styles.vaultRight}>
-            <Text style={[styles.vaultGrams, { color: theme.textPrimary }]}>100.0 gm</Text>
-            <Text style={[styles.vaultRupee, { color: theme.textSecondary }]}>₹7,385</Text>
-          </View>
-        </View>
-
-        <View style={{ height: 110 }} />
+        {/* Padding for Floating Tab Bar */}
+        <View style={{ height: 100 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -329,57 +250,83 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  scrollContent: {
+    paddingHorizontal: 20,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    height: 60,
+    paddingVertical: 16,
+    marginTop: Platform.OS === 'android' ? 20 : 0,
   },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  headerBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
   },
   headerTitle: {
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 20,
+  portfolioCard: {
+    borderRadius: 30,
+    padding: 24,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  card: {
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-  },
-  cardTopRow: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
   cardLabel: {
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
-  gainBadge: {
+  profitBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-    flexShrink: 0,
+    borderRadius: 10,
   },
-  gainText: {
+  profitText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: '#10B981',
     marginLeft: 4,
   },
-  portfolioValue: {
-    fontSize: 32,
-    fontWeight: '800',
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
     marginBottom: 20,
+  },
+  currency: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginRight: 4,
+  },
+  mainValue: {
+    fontSize: 44,
+    fontWeight: '900',
+  },
+  decimals: {
+    fontSize: 24,
+    fontWeight: '700',
   },
   divider: {
     height: 1,
@@ -389,71 +336,91 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  statItem: {
+    flex: 1,
+  },
   statLabel: {
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     marginBottom: 4,
   },
   statValue: {
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
   },
-  performanceHeader: {
+  performanceCard: {
+    borderRadius: 30,
+    padding: 20,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  perfHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  performanceTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  perfTitle: {
+    fontSize: 16,
+    fontWeight: '800',
   },
-  periodRow: {
+  periodTabs: {
     flexDirection: 'row',
-    gap: 8,
+    borderRadius: 12,
+    padding: 4,
   },
   periodBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 8,
+  },
+  periodBtnActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   periodText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  chartWrapper: {
-    height: CHART_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontSize: 11,
+    fontWeight: '800',
   },
   chartContainer: {
     height: CHART_HEIGHT,
-    width: CHART_WIDTH,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  bannerCard: {
-    height: 160,
+  banner: {
+    height: 150,
     borderRadius: 24,
     overflow: 'hidden',
-    marginBottom: 24,
+    marginTop: 20,
   },
-  bannerImage: {
+  bannerImg: {
     ...StyleSheet.absoluteFillObject,
   },
-  bannerContent: {
-    paddingHorizontal: 20,
+  bannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    padding: 20,
     justifyContent: 'center',
-    height: '100%',
   },
   bannerTitle: {
+    fontSize: 18,
     fontWeight: '800',
+    color: '#F59E0B',
     marginBottom: 4,
   },
   bannerSub: {
+    fontSize: 13,
     color: '#FFF',
-    opacity: 0.9,
+    fontWeight: '500',
     marginBottom: 16,
-    lineHeight: 18,
-    maxWidth: '80%',
+    opacity: 0.9,
+    maxWidth: '70%',
   },
   bannerBtn: {
     backgroundColor: '#FFF',
@@ -463,67 +430,69 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   bannerBtnText: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#111827',
   },
-  vaultTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  sectionHeader: {
+    marginTop: 24,
     marginBottom: 16,
   },
-  vaultItem: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  vaultList: {
+    gap: 12,
+  },
+  assetItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: 24,
     padding: 16,
-    borderRadius: 20,
-    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  vaultIconWrap: {
+  assetIconContainer: {
     width: 48,
     height: 48,
-    marginRight: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
   },
-  vaultIconGrad: {
+  assetIcon: {
     width: '100%',
     height: '100%',
-    borderRadius: 12,
-    padding: 2,
-  },
-  vaultIconCircle: {
-    flex: 1,
-    borderRadius: 10,
-    padding: 2,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  vaultIconInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 8,
-  },
-  vaultInfo: {
+  assetInfo: {
     flex: 1,
   },
-  vaultName: {
-    fontWeight: '700',
+  assetName: {
+    fontSize: 15,
+    fontWeight: '800',
     marginBottom: 2,
   },
-  vaultMeta: {
-    opacity: 0.8,
-  },
-  vaultRight: {
-    alignItems: 'flex-end',
-  },
-  vaultGrams: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  vaultRupee: {
-    fontSize: 13,
+  assetMeta: {
+    fontSize: 11,
     fontWeight: '600',
   },
+  assetValues: {
+    alignItems: 'flex-end',
+  },
+  assetWeight: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  assetValue: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });
-
-

@@ -61,7 +61,7 @@ export default function GetStartedScreen() {
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      router.push('/(tabs)');
+      router.push('/choose-language');
     }, 1500);
   };
 

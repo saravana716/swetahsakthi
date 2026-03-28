@@ -20,7 +20,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.saravanapriyan.swarna_sakthi_app"
+      "package": "com.saravanapriyan.swarna_sakthi_app",
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "static",
@@ -49,8 +50,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "509dee85-8f1a-4da5-8006-aa7bb10a21f4"
+        "projectId": "6df1d546-9433-4e9c-8ec7-a29479430a6c"
       }
-    }
+    },
+    "owner": "manisara07"
   }
 }
