@@ -16,42 +16,89 @@ import {
   Vibration
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import Toast from 'react-native-toast-message';
 import { useTheme } from './context/ThemeContext';
-import { getLiveRates } from '../services/augmontApi';
+import { useAuth } from './context/AuthContext';
+import { 
+  getLiveRates, 
+  getUserPassbook, 
+  getUserBanks, 
+  addUserBank, 
+  sellGoldSilver 
+} from '../services/augmontApi';
+import { Modal } from 'react-native';
 
 export default function SellScreen() {
   const router = useRouter();
   const { theme, isDarkMode } = useTheme();
+  const { user, userProfile } = useAuth();
   const { type } = useLocalSearchParams();
   const isGold = type === 'gold';
   
   const [mode, setMode] = useState('rupees'); 
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [rate, setRate] = useState(0);
-  const [vaultBalance, setVaultBalance] = useState(isGold ? 2.4500 : 10.2500); // Mock balance
+  const [vaultBalance, setVaultBalance] = useState(0);
+  
+  // Bank States
+  const [userBanks, setUserBanks] = useState([]);
+  const [selectedBank, setSelectedBank] = useState(null);
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [successModal, setSuccessModal] = useState(false);
+  const [lastTxId, setLastTxId] = useState('');
+  const [blockId, setBlockId] = useState(null);
+  
+  const [bankForm, setBankForm] = useState({
+    accountNumber: '',
+    ifscCode: '',
+    accountName: userProfile?.displayName || '',
+    bankName: ''
+  });
 
   useEffect(() => {
-    let interval;
-    const fetchRate = async () => {
+    const fetchInitialData = async () => {
       try {
-        const data = await getLiveRates();
-        if (data?.result?.data?.rates) {
-          const r = isGold ? data.result.data.rates.gSell : data.result.data.rates.sSell;
-          setRate(parseFloat(r));
+        setLoading(true);
+        const token = await user.getIdToken();
+        const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+
+        if (uniqueId) {
+          // 1. Fetch Rates
+          const ratesData = await getLiveRates();
+          if (ratesData?.result?.data?.rates) {
+            const r = isGold ? ratesData.result.data.rates.gSell : ratesData.result.data.rates.sSell;
+            setRate(parseFloat(r));
+            setBlockId(ratesData.result.data.blockId);
+          }
+
+          // 2. Fetch Vault Balance
+          const passbook = await getUserPassbook(uniqueId, token);
+          if (passbook?.result?.data) {
+            const grams = isGold ? passbook.result.data.goldGrms : passbook.result.data.silverGrms;
+            setVaultBalance(parseFloat(grams || 0));
+          }
+
+          // 3. Fetch Saved Banks
+          const banksResponse = await getUserBanks(uniqueId, token);
+          const banks = banksResponse?.result?.data || (Array.isArray(banksResponse?.result) ? banksResponse.result : []);
+          
+          if (banks && banks.length > 0) {
+            setUserBanks(banks);
+            setSelectedBank(banks[0]);
+          }
         }
       } catch (error) {
-        console.error('Fetch rate error:', error);
+        console.error('Fetch initial data error:', error);
+        Toast.show({ type: 'error', text1: 'Failed to sync data' });
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRate(); // Initial fetch
-    interval = setInterval(fetchRate, 30000); // Refresh every 30s
-
-    return () => clearInterval(interval);
-  }, [isGold]);
+    fetchInitialData();
+  }, [isGold, userProfile]);
 
   const calculatedValue = mode === 'rupees' 
     ? (amount ? (parseFloat(amount) / rate).toFixed(4) : '0.0000')
@@ -60,9 +107,99 @@ export default function SellScreen() {
   const handleSellAll = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (mode === 'grams') {
-      setAmount(vaultBalance.toString());
+      setAmount(vaultBalance.toFixed(4));
     } else {
       setAmount((vaultBalance * rate).toFixed(2));
+    }
+  };
+
+  const handleAddBank = async () => {
+    if (!bankForm.accountNumber || !bankForm.ifscCode || !bankForm.bankName) {
+      Toast.show({ type: 'error', text1: 'All bank fields are required' });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      const token = await user.getIdToken();
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      
+      // Ensure IFSC is uppercase and fields match API
+      const payload = {
+        ...bankForm,
+        ifscCode: bankForm.ifscCode.toUpperCase()
+      };
+      
+      const response = await addUserBank(uniqueId, payload, token);
+      
+      if (response?.result?.data) {
+        const newBank = response.result.data;
+        setUserBanks(prev => [newBank, ...prev]);
+        setSelectedBank(newBank);
+        setShowAddBank(false);
+        Toast.show({ type: 'success', text1: 'Bank Account Saved!' });
+      }
+    } catch (error) {
+      Toast.show({ type: 'error', text1: error.message || 'Failed to add bank' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleProceedToSell = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      Toast.show({ type: 'error', text1: 'Please enter a valid amount' });
+      return;
+    }
+
+    if (!selectedBank) {
+      Toast.show({ type: 'error', text1: 'Please add/select a payout bank' });
+      return;
+    }
+
+    const gramsToSell = mode === 'rupees' ? (parseFloat(amount) / rate) : parseFloat(amount);
+    if (gramsToSell > vaultBalance) {
+      Toast.show({ type: 'error', text1: 'Insufficient balance in vault' });
+      return;
+    }
+
+    if (!blockId) {
+      Toast.show({ type: 'error', text1: 'Live rate sync error, please wait' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const token = await user.getIdToken();
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      const txId = `SELL_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      
+      const payload = {
+        uniqueId: uniqueId,
+        [mode === 'rupees' ? 'amount' : 'quantity']: amount,
+        lockPrice: rate,
+        blockId: blockId,
+        merchantTransactionId: txId,
+        metalType: isGold ? 'gold' : 'silver',
+        userBank: {
+          userBankId: selectedBank.userBankId,
+          // Only include these if they are not null, or if userBankId is somehow missing
+          ...(selectedBank.accountName && { accountName: selectedBank.accountName }),
+          ...(selectedBank.accountNumber && { accountNumber: selectedBank.accountNumber }),
+          ...(selectedBank.ifscCode && { ifscCode: selectedBank.ifscCode.toUpperCase() })
+        }
+      };
+
+      console.log("FINAL SELL API PAYLOAD:", JSON.stringify(payload, null, 2));
+      await sellGoldSilver(payload, token);
+      
+      setLastTxId(txId);
+      setSuccessModal(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      Toast.show({ type: 'error', text1: error.message || 'Transaction failed' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -141,17 +278,177 @@ export default function SellScreen() {
             </View>
           </View>
 
+          {/* Payout Bank Selection Section */}
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, marginTop: 24 }]}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="business-outline" size={20} color={theme.primary} />
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Payout Destination</Text>
+            </View>
+
+            {selectedBank ? (
+              <View style={[styles.bankCard, { borderColor: theme.border }]}>
+                <View style={[styles.bankIconWrap, { backgroundColor: theme.itemBg }]}>
+                  <Ionicons name="card" size={24} color={theme.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bankName, { color: theme.textPrimary }]}>{selectedBank.bankName || 'Linked Bank'}</Text>
+                  <Text style={[styles.bankDetails, { color: theme.textSecondary }]}>
+                    {selectedBank.accountName || selectedBank.accountHolderName} • {selectedBank.accountNumber ? `**** ${selectedBank.accountNumber.slice(-4)}` : 'Verified Account'}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowAddBank(true)}>
+                  <Text style={[styles.changeText, { color: theme.primary }]}>Change</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity 
+                style={[styles.addBankBtn, { borderColor: theme.primary }]}
+                onPress={() => setShowAddBank(true)}
+              >
+                <Ionicons name="add-circle-outline" size={22} color={theme.primary} />
+                <Text style={[styles.addBankText, { color: theme.primary }]}>Add Payout Bank Account</Text>
+              </TouchableOpacity>
+            )}
+            
+            <Text style={[styles.bankHint, { color: theme.textSecondary }]}>
+              Funds will be transferred to this account within 24-48 business hours.
+            </Text>
+          </View>
+
           {/* Summary Info Box */}
           <View style={[styles.infoBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.infoRow}>
               <Ionicons name="card-outline" size={18} color={theme.textSecondary} />
-              <Text style={[styles.infoText, { color: theme.textSecondary }]}>Amount will be credited to <Text style={{fontWeight:'800', color: theme.textPrimary}}>Primary Bank Account</Text></Text>
+              <Text style={[styles.infoText, { color: theme.textSecondary }]}>Secure payout via <Text style={{fontWeight:'800', color: theme.textPrimary}}>Augmont Trust</Text></Text>
             </View>
             <View style={[styles.infoRow, { marginTop: 12 }]}>
-              <Ionicons name="time-outline" size={18} color={theme.textSecondary} />
-              <Text style={[styles.infoText, { color: theme.textSecondary }]}>Processing time: <Text style={{fontWeight:'800', color: theme.textPrimary}}>24-48 Hours</Text></Text>
+              <Ionicons name="shield-checkmark-outline" size={18} color={theme.textSecondary} />
+              <Text style={[styles.infoText, { color: theme.textSecondary }]}>100% Tax Compliant Liquidation</Text>
             </View>
           </View>
+
+          {/* Add Bank Modal */}
+          <Modal visible={showAddBank} transparent animationType="slide" onRequestClose={() => setShowAddBank(false)}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Link Payout Bank</Text>
+                  <TouchableOpacity onPress={() => setShowAddBank(false)}>
+                    <Ionicons name="close" size={24} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                {userBanks.length > 0 && (
+                  <ScrollView style={styles.bankList} showsVerticalScrollIndicator={false}>
+                    <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginBottom: 12 }]}>SELECT EXISTING</Text>
+                    {userBanks.map((bank, index) => (
+                      <TouchableOpacity 
+                        key={index} 
+                        style={[styles.bankListItem, { backgroundColor: theme.card, borderColor: selectedBank?.userBankId === bank.userBankId ? theme.primary : theme.border }]}
+                        onPress={() => { setSelectedBank(bank); setShowAddBank(false); }}
+                      >
+                        <Ionicons name="business" size={20} color={theme.textSecondary} />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={[styles.bankName, { color: theme.textPrimary }]}>{bank.bankName || 'Payout Account'}</Text>
+                          <Text style={[styles.bankDetails, { color: theme.textSecondary }]}>
+                            {bank.accountNumber ? `**** ${bank.accountNumber.slice(-4)}` : 'Verified'}
+                          </Text>
+                        </View>
+                        {selectedBank?.userBankId === bank.userBankId && <Ionicons name="checkmark-circle" size={20} color={theme.primary} />}
+                      </TouchableOpacity>
+                    ))}
+                    <View style={[styles.divider, { marginVertical: 20 }]} />
+                  </ScrollView>
+                )}
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>ADD NEW ACCOUNT</Text>
+                  
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Bank Name</Text>
+                    <TextInput 
+                      style={[styles.modalInput, { backgroundColor: theme.card, color: theme.textPrimary, borderColor: theme.border }]}
+                      placeholder="e.g. HDFC Bank"
+                      placeholderTextColor={theme.textSecondary}
+                      value={bankForm.bankName}
+                      onChangeText={(t) => setBankForm(p => ({...p, bankName: t}))}
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Account Holder Name</Text>
+                    <TextInput 
+                      style={[styles.modalInput, { backgroundColor: theme.card, color: theme.textPrimary, borderColor: theme.border }]}
+                      placeholder="Name as per Passbook"
+                      placeholderTextColor={theme.textSecondary}
+                      value={bankForm.accountName}
+                      onChangeText={(t) => setBankForm(p => ({...p, accountName: t}))}
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Account Number</Text>
+                    <TextInput 
+                      style={[styles.modalInput, { backgroundColor: theme.card, color: theme.textPrimary, borderColor: theme.border }]}
+                      placeholder="12 to 16 Digits"
+                      placeholderTextColor={theme.textSecondary}
+                      keyboardType="numeric"
+                      value={bankForm.accountNumber}
+                      onChangeText={(t) => setBankForm(p => ({...p, accountNumber: t}))}
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>IFSC Code</Text>
+                    <TextInput 
+                      style={[styles.modalInput, { backgroundColor: theme.card, color: theme.textPrimary, borderColor: theme.border }]}
+                      placeholder="HDFC0001234"
+                      placeholderTextColor={theme.textSecondary}
+                      autoCapitalize="characters"
+                      value={bankForm.ifscCode}
+                      onChangeText={(t) => setBankForm(p => ({...p, ifscCode: t}))}
+                    />
+                  </View>
+
+                  <TouchableOpacity style={[styles.saveBankBtn, isSubmitting && { opacity: 0.7 }]} onPress={handleAddBank} disabled={isSubmitting}>
+                    <LinearGradient colors={['#EAB308', '#D97706']} style={styles.saveBankBtnGrad}>
+                      {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBankBtnText}>Link & Save Account</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Success Summary Modal */}
+          <Modal visible={successModal} transparent animationType="fade">
+            <View style={styles.modalOverlay}>
+              <View style={[styles.successContent, { backgroundColor: theme.background }]}>
+                <View style={styles.successIconWrap}>
+                  <Ionicons name="checkmark-done" size={64} color="#10B981" />
+                </View>
+                <Text style={[styles.successTitle, { color: theme.textPrimary }]}>Sale Successful!</Text>
+                <Text style={[styles.successSub, { color: theme.textSecondary }]}>
+                  Your {isGold ? 'Gold' : 'Silver'} has been liquidated. ₹{mode === 'rupees' ? amount : calculatedValue} will be credited to {selectedBank?.bankName || 'your bank account'} shortly.
+                </Text>
+                
+                <View style={[styles.txDetails, { backgroundColor: theme.card }]}>
+                  <View style={styles.txRow}>
+                    <Text style={[styles.txLabel, { color: theme.textSecondary }]}>Transaction ID</Text>
+                    <Text style={[styles.txValue, { color: theme.textPrimary }]}>{lastTxId.split('_')[1]}</Text>
+                  </View>
+                  <View style={styles.txRow}>
+                    <Text style={[styles.txLabel, { color: theme.textSecondary }]}>Asset Quantity</Text>
+                    <Text style={[styles.txValue, { color: theme.textPrimary }]}>{mode === 'grams' ? amount : calculatedValue} g</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity style={styles.closeSuccessBtn} onPress={() => { setSuccessModal(false); router.replace('/(tabs)/portfolio'); }}>
+                  <Text style={styles.closeSuccessText}>Go to Portfolio</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
 
         </ScrollView>
         
@@ -161,13 +458,21 @@ export default function SellScreen() {
             <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Total to Receive</Text>
             <Text style={[styles.totalValue, { color: theme.textPrimary }]}>₹{mode === 'rupees' ? (amount || '0') : calculatedValue}</Text>
           </View>
-          <TouchableOpacity style={styles.buyBtn}>
+          <TouchableOpacity 
+            style={[styles.buyBtn, isSubmitting && { opacity: 0.7 }]} 
+            onPress={handleProceedToSell}
+            disabled={isSubmitting}
+          >
             <LinearGradient
               colors={['#EF4444', '#991B1B']}
               style={styles.buyBtnGrad}
               start={{x:0, y:0}} end={{x:1, y:1}}
             >
-              <Text style={styles.buyBtnText}>PROCEED TO SELL</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.buyBtnText}>PROCEED TO SELL</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -375,4 +680,63 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1,
   },
+  
+  // New Dynamic Styles
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', marginLeft: 10 },
+  bankCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  bankIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  bankName: { fontSize: 15, fontWeight: '800' },
+  bankDetails: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  changeText: { fontSize: 13, fontWeight: '800' },
+  addBankBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  addBankText: { fontSize: 14, fontWeight: '800', marginLeft: 10 },
+  bankHint: { fontSize: 11, fontWeight: '500', marginTop: 12, textAlign: 'center', opacity: 0.7 },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 24, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 22, fontWeight: '900' },
+  fieldLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  formGroup: { marginBottom: 16 },
+  inputLabel: { fontSize: 13, fontWeight: '700', marginBottom: 8 },
+  modalInput: { height: 52, borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, fontSize: 15, fontWeight: '600' },
+  saveBankBtn: { height: 56, borderRadius: 16, overflow: 'hidden', marginTop: 24 },
+  saveBankBtnGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  saveBankBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  
+  bankList: { maxHeight: 200 },
+  bankListItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  
+  successContent: { padding: 32, alignItems: 'center', borderRadius: 35, marginHorizontal: 20 },
+  successIconWrap: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#10B98115', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  successTitle: { fontSize: 24, fontWeight: '900', marginBottom: 12 },
+  successSub: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  txDetails: { width: '100%', borderRadius: 20, padding: 20, marginBottom: 32 },
+  txRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  txLabel: { fontSize: 13, fontWeight: '600' },
+  txValue: { fontSize: 13, fontWeight: '800' },
+  closeSuccessBtn: { width: '100%', height: 56, borderRadius: 16, backgroundColor: '#EAB308', alignItems: 'center', justifyContent: 'center' },
+  closeSuccessText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });

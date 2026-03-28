@@ -16,7 +16,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { theme } = useTheme();
-  const { loginWithPhone } = useAuth();
+  const { loginWithPhone, setIsMpinVerified } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [confirmationResult, setConfirmationResult] = useState(null);
@@ -102,6 +102,7 @@ export default function LoginScreen() {
     setIsLoadingOtp(true);
     try {
       await confirmationResult.confirm(otp);
+      setIsMpinVerified(true); // Single-session bypass: They don't need MPIN if they just used SMS OTP
       // DO NOT set isLoadingOtp(false) here, keep the button disabled while redirecting
       Toast.show({
         type: 'success',

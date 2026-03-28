@@ -1,13 +1,62 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { getAugmontKYCStatus, getAugmontProfile, getUserPassbook, getAugmontBuyList } from '../../services/augmontApi';
+import { useState, useEffect } from 'react';
+import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 
 export default function AccountScreen() {
+  const router = useRouter();
   const { theme, isDarkMode, toggleDarkMode } = useTheme();
   const { user, userProfile, logout } = useAuth();
+  const [kycStatus, setKycStatus] = useState(userProfile?.kycStatus || 'pending');
+  const [passbookData, setPassbookData] = useState(null);
+  const [buyList, setBuyList] = useState([]);
+  const [tenure, setTenure] = useState('0M');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = await user.getIdToken();
+        const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+        
+        if (uniqueId) {
+          // 1. Fetch KYC Status
+          const statusData = await getAugmontKYCStatus(uniqueId, token);
+          if (statusData?.result?.data?.status) {
+            setKycStatus(statusData.result.data.status);
+          }
+          
+          // 2. Fetch Passbook for Wealth Calculation
+          const passData = await getUserPassbook(uniqueId, token);
+          if (passData?.result?.data) {
+            setPassbookData(passData.result.data);
+          }
+
+          // 3. Fetch Buy List for Order Count
+          const orders = await getAugmontBuyList(uniqueId, token);
+          if (orders?.result?.data) {
+            setBuyList(orders.result.data);
+          }
+        }
+
+        // 4. Calculate Tenure
+        if (userProfile?.createdAt) {
+          const joinDate = new Date(userProfile.createdAt);
+          const now = new Date();
+          const months = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth());
+          setTenure(`${months}M`);
+        }
+      } catch (error) {
+        console.error("Failed to refresh account data:", error);
+      }
+    };
+    fetchData();
+  }, [userProfile]);
 
   const handleLogout = async () => {
     try {
@@ -70,24 +119,37 @@ export default function AccountScreen() {
           <Text style={[styles.userName, { color: theme.textPrimary }]}>{userProfile?.displayName || 'Welcome! ✨'}</Text>
           <Text style={[styles.userPhone, { color: theme.textSecondary }]}>{user?.phoneNumber || '+91 9999999999'}</Text>
           
-          <View style={[styles.kycBadge, { backgroundColor: isDarkMode ? '#064E3B' : '#ECFDF5' }]}>
-            <View style={[styles.kycDot, { backgroundColor: '#10B981' }]} />
-            <Text style={[styles.kycText, { color: isDarkMode ? '#34D399' : '#059669' }]}>KYC Verified</Text>
-          </View>
+          <TouchableOpacity 
+            style={[
+              styles.kycBadge, 
+              { backgroundColor: kycStatus === 'approved' ? (isDarkMode ? '#064E3B' : '#ECFDF5') : (isDarkMode ? '#451a03' : '#FFF7ED') }
+            ]}
+            onPress={() => router.push('/kyc')}
+          >
+            <View style={[styles.kycDot, { backgroundColor: kycStatus === 'approved' ? '#10B981' : '#F59E0B' }]} />
+            <Text style={[
+              styles.kycText, 
+              { color: kycStatus === 'approved' ? (isDarkMode ? '#34D399' : '#059669') : (isDarkMode ? '#FBBF24' : '#D97706') }
+            ]}>
+              {kycStatus === 'approved' ? 'KYC Verified' : `KYC ${kycStatus.toUpperCase()}`}
+            </Text>
+          </TouchableOpacity>
 
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
-              <Text style={[styles.statValue, { color: theme.textPrimary }]}>54</Text>
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>{buyList.length}</Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>HISTORY</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
             <View style={styles.statBox}>
-              <Text style={[styles.statValue, { color: theme.primary }]}>7.93g</Text>
+              <Text style={[styles.statValue, { color: theme.primary }]}>
+                {(parseFloat(passbookData?.goldGrms || 0) + parseFloat(passbookData?.silverGrms || 0)).toFixed(4)}g
+              </Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>WEALTH</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
             <View style={styles.statBox}>
-              <Text style={[styles.statValue, { color: theme.textPrimary }]}>6M</Text>
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>{tenure}</Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>TENURE</Text>
             </View>
           </View>
@@ -102,7 +164,11 @@ export default function AccountScreen() {
           <SettingItem 
             icon="person-outline" 
             title="Personal Information" 
-            subtitle="Name, Email, Phone" 
+            subtitle="Name, Email, Profile Details" 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/profile');
+            }}
           />
           <SettingItem 
             icon="notifications-outline" 

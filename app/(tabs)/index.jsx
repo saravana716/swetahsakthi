@@ -4,11 +4,12 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { useLanguage } from '../context/LanguageContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { getLiveRates, getUserByMongoId } from '../../services/augmontApi';
+import { getLiveRates, getUserByMongoId, getUserPassbook, getAugmontBuyList, getNews } from '../../services/augmontApi';
 
 const { width } = Dimensions.get('window');
 
@@ -30,6 +31,10 @@ export default function DashboardScreen() {
   const { notificationsEnabled } = useNotifications();
   const [liveRatesData, setLiveRatesData] = useState(null);
   const [mongoUser, setMongoUser] = useState(null);
+  const [passbookData, setPassbookData] = useState(null);
+  const [buyList, setBuyList] = useState([]);
+  const [goldHistory, setGoldHistory] = useState([7285, 7292, 7288, 7301, 7295, 7308, 7302, 7315, 7310, 7322]);
+  const [silverHistory, setSilverHistory] = useState([86.2, 86.5, 86.1, 86.8, 86.4, 87.1, 86.9, 87.5, 87.2, 87.8]);
   const toggleAnim = useRef(new Animated.Value(isGold ? 0 : 1)).current;
 
   useEffect(() => {
@@ -46,7 +51,18 @@ export default function DashboardScreen() {
       try {
         const data = await getLiveRates();
         if (data && data.result && data.result.data) {
-          setLiveRatesData(data.result.data.rates);
+          const rates = data.result.data.rates;
+          setLiveRatesData(rates);
+          
+          // Append to history for Live Chart
+          setGoldHistory(prev => {
+            const newHist = [...prev, parseFloat(rates.gBuy)];
+            return newHist.slice(-20); // Keep last 20 points
+          });
+          setSilverHistory(prev => {
+            const newHist = [...prev, parseFloat(rates.sBuy)];
+            return newHist.slice(-20); // Keep last 20 points
+          });
         }
       } catch (error) {
         console.error('Failed to fetch rates:', error);
@@ -77,24 +93,132 @@ export default function DashboardScreen() {
     fetchMongoUser();
   }, [user, userProfile?.mongoId]);
 
+  // Fetch Augmont Passbook (Weights in Grams)
+  useEffect(() => {
+    const fetchPassbook = async () => {
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      if (user && uniqueId) {
+        try {
+          const token = await user.getIdToken();
+          const response = await getUserPassbook(uniqueId, token);
+          if (response && response.result && response.result.data) {
+            setPassbookData(response.result.data);
+          }
+        } catch (error) {
+          console.error("Failed to sync Augmont Passbook:", error);
+        }
+      }
+    };
+    
+    fetchPassbook();
+  }, [user, userProfile]);
+
+  // Fetch Augmont Buy List (Investment History)
+  useEffect(() => {
+    const fetchBuyList = async () => {
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      if (user && uniqueId) {
+        try {
+          const token = await user.getIdToken();
+          const response = await getAugmontBuyList(uniqueId, token);
+          if (response && response.result && response.result.data) {
+            setBuyList(response.result.data);
+          }
+        } catch (error) {
+          console.error("Failed to sync Augmont Buy List:", error);
+        }
+      }
+    };
+    
+    fetchBuyList();
+  }, [user, userProfile]);
+
   const scale = 1; 
   const fs = (size) => Math.round((language === 'ta' ? size * 0.8 : size) * scale);
 
   // Dynamic MongoDB Balances (Fallbacks to 0 if loading)
   const portfolioText = isGold ? t('dashboard')?.totalGold || 'Total Digital Gold' : t('dashboard')?.totalSilver || 'Total Wallet Cash';
   
-  // Example display logic: if checking Gold, we could show goldBalance in grams. If Silver/Wallet, show walletBalance. 
-  // Customizing just to prove the DB hookup works:
-  const rawBalance = isGold ? (mongoUser?.goldBalance || 0) : (mongoUser?.walletBalance || 0);
+  // Dynamic Augmont Passbook Balances (Headline as GRAMS)
+  const rawWeight = isGold ? (passbookData?.goldGrms || 0) : (passbookData?.silverGrms || 0);
   
-  const balanceInt = `₹${Math.floor(rawBalance).toLocaleString('en-IN')}`;
-  const balanceDec = `.${(rawBalance % 1).toFixed(2).split('.')[1] || '00'}`;
+  const balanceInt = `${parseFloat(rawWeight).toFixed(4)}`;
+  const balanceDec = `g`;
   
-  const profitPercent = isGold ? '↗ +0.00%' : '↗ +0.00%';
-  const investedInt = isGold ? '₹0' : '₹0';
-  const investedDec = '.00';
-  const profitValInt = isGold ? '+ ₹0' : '+ ₹0';
-  const profitValDec = '.00';
+  const NEWS_FALLBACK = 'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=600';
+
+  const [newsList, setNewsList] = useState([]);
+  const [selectedNews, setSelectedNews] = useState(null);
+  const [newsModalVisible, setNewsModalVisible] = useState(false);
+
+  // Fetch Market News
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const data = await getNews(true);
+        // Sort by Latest Published Date
+        const sorted = data.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+        setNewsList(sorted);
+      } catch (error) {
+        console.error("Failed to fetch dashboard news:", error);
+      }
+    };
+    fetchNews();
+  }, []);
+
+  // Live Chart Normalization Logic
+  const activeHistory = isGold ? goldHistory : silverHistory;
+  const minPrice = Math.min(...activeHistory);
+  const maxPrice = Math.max(...activeHistory);
+  const priceRange = maxPrice - minPrice || 1;
+
+  // Chart Dimensions
+  const chartWidth = width - 88;
+  const chartHeight = 84;
+  
+  // Custom SVG Path Calculation
+  const getPaths = () => {
+    if (activeHistory.length < 2) return { line: '', area: '' };
+    
+    const points = activeHistory.map((val, i) => {
+      const x = (i / (activeHistory.length - 1)) * chartWidth;
+      const y = chartHeight - (((val - minPrice) / priceRange) * (chartHeight * 0.6) + (chartHeight * 0.2));
+      return { x, y };
+    });
+
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+        const xc = (points[i].x + points[i + 1].x) / 2;
+        const yc = (points[i].y + points[i + 1].y) / 2;
+        d += ` Q ${points[i].x} ${points[i].y}, ${xc} ${yc}`;
+    }
+    d += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+
+    const linePath = d;
+    const areaPath = `${d} L ${chartWidth} ${chartHeight} L 0 ${chartHeight} Z`;
+    
+    return { line: linePath, area: areaPath };
+  };
+
+  const { line: linePath, area: areaPath } = getPaths();
+  
+  const currentRate = isGold ? (liveRatesData?.gBuy || 0) : (liveRatesData?.sBuy || 0);
+  const calculatedValue = parseFloat(rawWeight) * parseFloat(currentRate);
+
+  // Dynamic Investment & Profit Calculation
+  const filteredPurchases = buyList.filter(item => item.type === (isGold ? 'gold' : 'silver'));
+  const totalInvested = filteredPurchases.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt), 0);
+  const netProfit = totalInvested > 0 ? calculatedValue - totalInvested : 0;
+  const pPercentage = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
+
+  const isProfit = netProfit >= 0;
+  const profitPercent = `${isProfit ? '↗' : '↘'} ${isProfit ? '+' : ''}${pPercentage.toFixed(2)}%`;
+  
+  const investedInt = `₹${Math.floor(totalInvested).toLocaleString('en-IN')}`;
+  const investedDec = `.${(totalInvested % 1).toFixed(2).split('.')[1] || '00'}`;
+  
+  const profitValInt = `${isProfit ? '+' : '-'} ₹${Math.floor(Math.abs(netProfit)).toLocaleString('en-IN')}`;
+  const profitValDec = `.${(Math.abs(netProfit) % 1).toFixed(2).split('.')[1] || '00'}`;
   
   // Dynamic Live Rates
   const liveRateInt = isGold 
@@ -107,12 +231,15 @@ export default function DashboardScreen() {
 
   const rateLabel = isGold ? `24K ${t('dashboard')?.rateLive || 'LIVE RATES'}` : `999 ${t('dashboard')?.rateLive || 'LIVE RATES'}`;
 
+  const displayNameRaw = userProfile?.displayName || 'User';
+  const displayGreetingName = displayNameRaw.length > 12 ? `${displayNameRaw.substring(0, 12)}...` : displayNameRaw;
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={[styles.greeting, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{`${t('dashboard')?.hello || 'HELLO'}, JXJF`}</Text>
+            <Text style={[styles.greeting, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{`${t('dashboard')?.hello || 'HELLO'}, ${displayGreetingName}`}</Text>
             <Text style={[styles.headerTitle, { color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">{`${t('dashboard')?.portfolio || 'Your Portfolio'}`}</Text>
           </View>
           <View style={styles.headerActions}>
@@ -161,9 +288,9 @@ export default function DashboardScreen() {
         {/* Main Portfolio Card */}
         <View style={[styles.portfolioCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}>
           <View style={styles.cardHeader}>
-            <Text style={[styles.portfolioLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{portfolioText}</Text>
-            <View style={[styles.profitBadge, { backgroundColor: isDarkMode ? '#064E3B' : '#F0FDF4' }]}>
-              <Text style={styles.profitBadgeText} numberOfLines={1}>{profitPercent}</Text>
+            <Text style={[styles.portfolioLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{isGold ? "Digital Gold Balance" : "Digital Silver Balance"}</Text>
+            <View style={[styles.profitBadge, { backgroundColor: isProfit ? (isDarkMode ? '#064E3B' : '#F0FDF4') : (isDarkMode ? '#450a0a' : '#FEF2F2') }]}>
+              <Text style={[styles.profitBadgeText, { color: isProfit ? '#22C55E' : '#EF4444' }]} numberOfLines={1}>{profitPercent}</Text>
             </View>
           </View>
           
@@ -172,33 +299,46 @@ export default function DashboardScreen() {
             <Text style={[styles.balanceDec, { color: theme.textPrimary }]}>{balanceDec}</Text>
           </View>
 
-          {/* Bar Chart Mockup */}
+          {/* Premium SVG Area Chart Trend */}
           <View style={styles.chartArea}>
-            {[2, 3.5, 1.5, 2.5, 3.5, 2.2, 4.5, 3.2, 5.5, 2.5].map((h, i) => (
-              <LinearGradient
-                key={i}
-                colors={isGold ? ['#FDE047', '#EAB308'] : (isDarkMode ? ['#475569', '#1E293B'] : ['#E2E8F0', '#94A3B8'])}
-                style={[styles.barItem, { height: h * 8 }]}
-                start={{x:0, y:0}} end={{x:0, y:1}}
-              />
-            ))}
+             <Svg width={chartWidth} height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                <Defs>
+                  <SvgGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0%" stopColor={isGold ? '#EAB308' : '#94A3B8'} stopOpacity="0.4" />
+                    <Stop offset="100%" stopColor={isGold ? '#EAB308' : '#94A3B8'} stopOpacity="0" />
+                  </SvgGradient>
+                </Defs>
+                
+                {/* Area Fill */}
+                <Path d={areaPath} fill="url(#chartGradient)" />
+                
+                {/* Smooth Line */}
+                <Path 
+                  d={linePath} 
+                  fill="none" 
+                  stroke={isGold ? '#EAB308' : '#64748B'} 
+                  strokeWidth="2.5" 
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+             </Svg>
           </View>
           
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <View style={styles.statsRow}>
             <View style={styles.statSide}>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{t('dashboard')?.invested || 'INVESTED'}</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">TOTAL INVESTED</Text>
               <View style={styles.statValRow}>
                 <Text style={[styles.statValueBase, { color: theme.textPrimary }]}>{investedInt}</Text>
                 <Text style={[styles.statValDec, { color: theme.textPrimary }]}>{investedDec}</Text>
               </View>
             </View>
             <View style={[styles.statSide, { alignItems: 'flex-end' }]}>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{t('dashboard')?.profit || 'PROFIT'}</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">NET PROFIT</Text>
               <View style={styles.statValRow}>
-                <Text style={styles.statValueProfit}>{profitValInt}</Text>
-                <Text style={styles.statValProfitDec}>{profitValDec}</Text>
+                <Text style={[styles.statValueProfit, { color: isProfit ? '#22C55E' : '#EF4444' }]}>{profitValInt}</Text>
+                <Text style={[styles.statValProfitDec, { color: isProfit ? '#22C55E' : '#EF4444' }]}>{profitValDec}</Text>
               </View>
             </View>
           </View>
@@ -295,24 +435,35 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.transactionCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}>
-          <View style={[styles.txIconContainer, { backgroundColor: isDarkMode ? '#064E3B' : '#E8F5E9' }]}>
-            <Ionicons name="trending-up" size={20} color="#22C55E" />
+        {buyList && buyList.length > 0 ? (
+          <View style={[styles.transactionCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}>
+            <View style={[styles.txIconContainer, { backgroundColor: isDarkMode ? '#064E3B' : '#E8F5E9' }]}>
+              <Ionicons name="trending-up" size={20} color="#22C55E" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={[styles.txTitle, { color: theme.textPrimary }]}>Bought {buyList[0].type.charAt(0).toUpperCase() + buyList[0].type.slice(1)}</Text>
+              <Text style={[styles.txTime, { color: theme.textSecondary }]}>{new Date(buyList[0].createdAt).toLocaleDateString()}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.txPrice}>-₹{parseFloat(buyList[0].inclTaxAmt).toLocaleString('en-IN')}</Text>
+              <Text style={[styles.txWeight, { color: theme.textSecondary }]}>{parseFloat(buyList[0].qty).toFixed(4)}g</Text>
+            </View>
           </View>
-          <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={[styles.txTitle, { color: theme.textPrimary }]}>Bought Gold</Text>
-            <Text style={[styles.txTime, { color: theme.textSecondary }]}>Today</Text>
+        ) : (
+          <View style={[styles.transactionCard, { backgroundColor: theme.card, justifyContent: 'center', opacity: 0.6 }]}>
+            <Text style={{ color: theme.textSecondary }}>No recent transactions</Text>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.txPrice}>+₹2,500</Text>
-            <Text style={[styles.txWeight, { color: theme.textSecondary }]}>0.45g</Text>
-          </View>
-        </View>
+        )}
 
         {/* Market Insights Content */}
         <View style={styles.insightsHeader}>
           <Text style={[styles.insightsTitle, { color: theme.textPrimary }]}>{t('dashboard')?.insights || "Market Insights"}</Text>
-          <TouchableOpacity style={styles.viewAllBtn}><Text style={[styles.viewAllLink, { color: theme.primary }]}>{t('dashboard')?.viewAll || "View all"}</Text></TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.viewAllBtn}
+            onPress={() => router.push('/news')}
+          >
+            <Text style={[styles.viewAllLink, { color: theme.primary }]}>{t('dashboard')?.viewAll || "View all"}</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.insightCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}>
@@ -331,26 +482,80 @@ export default function DashboardScreen() {
 
         {/* News Carousel */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsCarouselScroll}>
-          {[
-            { tag: 'Market Alert', img: 'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=400', meta: '2h ago • Source: Mint', headline: 'Gold prices drop 9% after hitting record highs' },
-            { tag: 'Expert Tips', img: 'https://images.unsplash.com/photo-1618044733300-9472054094ee?q=80&w=400', meta: '4h ago • Source: CNBC', headline: 'Why digital gold is the safest hedge against inflation' },
-            { tag: 'Global News', img: 'https://images.unsplash.com/photo-1599050751717-380ebfac0549?q=80&w=400', meta: '8h ago • Source: Reuters', headline: 'Central banks increase reserves by highest margin in 2 years' },
-          ].map((news, i) => (
-            <View key={i} style={[styles.newsCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}>
-              <Image source={{uri: news.img}} style={styles.newsImg} />
-              <View style={[styles.newsTag, { backgroundColor: theme.primary }]}>
-                <Text style={styles.newsTagText}>{news.tag}</Text>
-              </View>
-              <View style={styles.newsBody}>
-                <Text style={[styles.newsMeta, { color: theme.textSecondary }]}>{news.meta}</Text>
-                <Text style={[styles.newsHeadline, { color: theme.textPrimary }]}>{news.headline}</Text>
-                <TouchableOpacity><Text style={[styles.newsReadMore, { color: theme.primary }]}>Read More</Text></TouchableOpacity>
-              </View>
-            </View>
+          {newsList.slice(0, 3).map((news) => (
+              <TouchableOpacity 
+                style={[styles.newsCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}
+                onPress={() => {
+                  setSelectedNews(news);
+                  setNewsModalVisible(true);
+                }}
+              >
+                <Image 
+                  source={{ uri: (news.imageUrl && !news.imageUrl.includes('example.com')) ? news.imageUrl : NEWS_FALLBACK }} 
+                  style={styles.newsImg} 
+                />
+                <View style={[styles.newsTag, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.newsTagText}>LIVE NEWS</Text>
+                </View>
+                <View style={styles.newsBody}>
+                  <Text style={[styles.newsMeta, { color: theme.textSecondary }]}>
+                    {new Date(news.publishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • Insights
+                  </Text>
+                  <Text style={[styles.newsHeadline, { color: theme.textPrimary }]} numberOfLines={2}>{news.title}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[styles.newsReadMore, { color: theme.primary }]}>Read Full Story</Text>
+                    <Ionicons name="arrow-forward-outline" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+                  </View>
+                </View>
+              </TouchableOpacity>
           ))}
         </ScrollView>
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Full News Reader Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={newsModalVisible}
+        onRequestClose={() => setNewsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.bottomSheet, { backgroundColor: theme.background, height: '90%', borderTopLeftRadius: 35, borderTopRightRadius: 35, overflow: 'hidden' }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Image 
+                source={{ uri: selectedNews?.imageUrl || 'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=800' }} 
+                style={{ width: '100%', height: 300 }} 
+              />
+              
+              <TouchableOpacity 
+                style={[styles.sheetCloseBtn, { position: 'absolute', top: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }]} 
+                onPress={() => setNewsModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+
+              <View style={{ padding: 25 }}>
+                <View style={[styles.newsTag, { backgroundColor: theme.primary, alignSelf: 'flex-start', position: 'relative', top: 0, left: 0, marginBottom: 16 }]}>
+                  <Text style={styles.newsTagText}>MARKET INSIGHT</Text>
+                </View>
+                <Text style={[styles.newsHeadline, { color: theme.textPrimary, fontSize: 26, lineHeight: 34, marginBottom: 10 }]}>{selectedNews?.title}</Text>
+                <Text style={[styles.newsMeta, { color: theme.textSecondary, marginBottom: 20 }]}>
+                  {new Date(selectedNews?.publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} • Global Trading Desk
+                </Text>
+                
+                <View style={{ height: 1.5, backgroundColor: theme.border, marginBottom: 25 }} />
+                
+                <Text style={{ fontSize: 16, lineHeight: 26, color: theme.textPrimary, fontWeight: '500', opacity: 0.9 }}>
+                  {selectedNews?.content}
+                </Text>
+              </View>
+              
+              <View style={{ height: 100 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Premium Language Selection Bottom Sheet */}
       <Modal 
@@ -549,16 +754,13 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   chartArea: {
-    height: 50,
+    height: 90,
+    width: '100%',
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
     paddingHorizontal: 0,
-    marginBottom: 24,
-  },
-  barItem: {
-    width: 24,
-    borderRadius: 4,
   },
   divider: {
     height: 1,
@@ -806,13 +1008,13 @@ const styles = StyleSheet.create({
   newsCard: {
     borderRadius: 24,
     overflow: 'hidden',
-    width: 260,
+    width: 230,
     marginRight: 16,
     borderWidth: 1,
   },
   newsImg: {
     width: '100%',
-    height: 140,
+    height: 110,
   },
   newsTag: {
     position: 'absolute',
@@ -828,17 +1030,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   newsBody: {
-    padding: 14,
+    padding: 12,
   },
   newsMeta: {
-    fontSize: 10,
+    fontSize: 9,
+    fontWeight: '700',
     marginBottom: 4,
   },
   newsHeadline: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '800',
-    marginBottom: 12,
-    lineHeight: 20,
+    marginBottom: 8,
+    lineHeight: 18,
   },
   newsReadMore: {
     fontSize: 12,

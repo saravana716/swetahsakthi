@@ -1,34 +1,38 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TouchableOpacity, 
-  TextInput, 
-  SafeAreaView, 
-  ScrollView, 
-  KeyboardAvoidingView, 
-  Platform,
-  ActivityIndicator,
-  Vibration
-} from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from './context/ThemeContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import Toast from 'react-native-toast-message';
 import { getLiveRates } from '../services/augmontApi';
+import { useAuth } from './context/AuthContext';
+import { useTheme } from './context/ThemeContext';
 
 export default function BuyScreen() {
   const router = useRouter();
   const { theme, isDarkMode } = useTheme();
+  const { user, userProfile } = useAuth();
   const { type } = useLocalSearchParams();
   const isGold = type === 'gold';
   
   const [mode, setMode] = useState('rupees'); // 'rupees' or 'grams'
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [rate, setRate] = useState(0);
+  const [blockId, setBlockId] = useState(null);
 
   useEffect(() => {
     let interval;
@@ -38,6 +42,7 @@ export default function BuyScreen() {
         if (data?.result?.data?.rates) {
           const r = isGold ? data.result.data.rates.gBuy : data.result.data.rates.sBuy;
           setRate(parseFloat(r));
+          setBlockId(data.result.data.blockId); // Capture active lock block
         }
       } catch (error) {
         console.error('Fetch rate error:', error);
@@ -55,6 +60,36 @@ export default function BuyScreen() {
   const calculatedValue = mode === 'rupees' 
     ? (amount ? (parseFloat(amount) / rate).toFixed(4) : '0.0000')
     : (amount ? (parseFloat(amount) * rate).toFixed(2) : '0.00');
+
+  // Exact quantities for API
+  const finalRsAmount = mode === 'rupees' ? parseFloat(amount || 0) : parseFloat(calculatedValue || 0);
+  const finalGmQuantity = mode === 'grams' ? parseFloat(amount || 0) : parseFloat(calculatedValue || 0);
+
+  const handleBuy = async () => {
+    if (!finalRsAmount || finalRsAmount <= 0) {
+       Toast.show({ type: 'error', text1: 'Enter a valid amount' });
+       return;
+    }
+    if (!blockId) {
+       Toast.show({ type: 'error', text1: 'Live rates sync error. Please wait.' });
+       return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // REDIRECT TO PAYMENT MOCK GATEWAY AS REQUESTED
+    router.push({
+      pathname: '/payment-mock',
+      params: {
+        finalRsAmount: finalRsAmount.toString(),
+        finalGmQuantity: finalGmQuantity.toString(),
+        rate: rate.toString(),
+        blockId: blockId,
+        metalType: isGold ? 'gold' : 'silver',
+        mode: mode
+      }
+    });
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
@@ -156,13 +191,22 @@ export default function BuyScreen() {
             <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Total to Pay</Text>
             <Text style={[styles.totalValue, { color: theme.textPrimary }]}>₹{mode === 'rupees' ? (amount || '0') : calculatedValue}</Text>
           </View>
-          <TouchableOpacity style={styles.buyBtn}>
+          <TouchableOpacity 
+            style={[styles.buyBtn, isProcessing && { opacity: 0.7 }]} 
+            activeOpacity={0.8}
+            onPress={handleBuy}
+            disabled={isProcessing}
+          >
             <LinearGradient
               colors={isGold ? ['#EAB308', '#B45309'] : ['#94A3B8', '#334155']}
               style={styles.buyBtnGrad}
               start={{x:0, y:0}} end={{x:1, y:1}}
             >
-              <Text style={styles.buyBtnText}>PROCEED TO BUY</Text>
+              {isProcessing ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.buyBtnText}>PROCEED TO BUY</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>

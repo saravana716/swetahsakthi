@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   ActivityIndicator, 
   KeyboardAvoidingView, 
@@ -11,11 +11,20 @@ import {
   TextInput, 
   TouchableOpacity, 
   View,
-  ScrollView
+  ScrollView,
+  Pressable,
+  Modal,
+  FlatList,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
-import { createUserInDB } from '../services/augmontApi';
+import { 
+  createUserInDB, 
+  createUserInAugmont, 
+  getMasterStates, 
+  getMasterCities 
+} from '../services/augmontApi';
 import Toast from 'react-native-toast-message';
 
 // Move CustomInput outside of the main component to prevent remounting on every state update
@@ -47,24 +56,99 @@ export default function ProfileSetupScreen() {
     email: '',
     mobileNumber: user?.phoneNumber || '',
     pin: '',
+    userState: '',
+    stateId: '',
+    userCity: '',
+    cityId: '',
+    userPincode: '',
+    dateOfBirth: '',
+    nomineeName: '',
+    nomineeRelation: '',
+    nomineeDateOfBirth: '',
   });
   const [loading, setLoading] = useState(false);
+  
+  // States & Cities Master Data
+  const [statesList, setStatesList] = useState([]);
+  const [citiesList, setCitiesList] = useState([]);
+  const [isCitiesLoading, setIsCitiesLoading] = useState(false);
+  const [showStateModal, setShowStateModal] = useState(false);
+  const [showCityModal, setShowCityModal] = useState(false);
+  
+  // Date Pickers
+  const [showBirthPicker, setShowBirthPicker] = useState(false);
+  const [showNomineePicker, setShowNomineePicker] = useState(false);
+
+  // Initial Fetches
+  useEffect(() => {
+    const fetchStates = async () => {
+      try {
+        const token = await user.getIdToken();
+        const data = await getMasterStates(token);
+        setStatesList(data);
+      } catch (err) {
+        console.error("Failed to load states:", err);
+      }
+    };
+    fetchStates();
+  }, []);
+
+  const handleStateSelect = async (state) => {
+    setFormData(prev => ({ ...prev, userState: state.name, stateId: state.id, userCity: '', cityId: '' }));
+    setShowStateModal(false);
+    setIsCitiesLoading(true);
+    try {
+      const token = await user.getIdToken();
+      const cities = await getMasterCities(state.id, token);
+      setCitiesList(cities);
+    } catch (err) {
+      console.error("Failed to load cities:", err);
+      Toast.show({ type: 'error', text1: 'Failed to load cities' });
+    } finally {
+      setIsCitiesLoading(false);
+    }
+  };
+
+  const handleCitySelect = (city) => {
+    setFormData(prev => ({ ...prev, userCity: city.name, cityId: city.id }));
+    setShowCityModal(false);
+  };
+
+  const onBirthDateChange = (event, selectedDate) => {
+    setShowBirthPicker(false);
+    if (selectedDate) {
+      setFormData(prev => ({ ...prev, dateOfBirth: selectedDate.toISOString().split('T')[0] }));
+    }
+  };
+
+  const onNomineeDateChange = (event, selectedDate) => {
+    setShowNomineePicker(false);
+    if (selectedDate) {
+      setFormData(prev => ({ ...prev, nomineeDateOfBirth: selectedDate.toISOString().split('T')[0] }));
+    }
+  };
 
   const handleComplete = async () => {
+    // Basic validation
     if (!formData.displayName || !formData.email || !formData.mobileNumber || formData.pin.length !== 4) {
-      Toast.show({ type: 'error', text1: 'Fill all fields correctly' });
+      Toast.show({ type: 'error', text1: 'Fill all core fields' });
+      return;
+    }
+
+    if (!formData.userState || !formData.userPincode || !formData.dateOfBirth) {
+      Toast.show({ type: 'error', text1: 'KYC fields are required for Augmont' });
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Generate an App-specific precise uniqueId
       let finalUniqueId = `USR${Date.now()}`;
       let mongoRecordId = null;
       let isSuccessMessage = 'Your account is ready! ✨';
       const token = await user.getIdToken();
       
-      const userPayload = {
+      // 1. MongoDB Payload
+      const mongoPayload = {
         name: formData.displayName,
         mobile: user.phoneNumber || formData.mobileNumber,
         email: formData.email,
@@ -75,48 +159,86 @@ export default function ProfileSetupScreen() {
         kycStatus: "pending"
       };
 
+      // Helper: Clean mobile to 10 digits
+      const cleanMobile = (m) => {
+        const d = m.replace(/\D/g, '');
+        return d.length > 10 ? d.slice(-10) : d;
+      };
+
+      // Helper: Try to convert DD/MM/YYYY to YYYY-MM-DD if needed
+      const formatToAugmontDate = (dateStr) => {
+        if (!dateStr) return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+          const [d, m, y] = dateStr.split('/');
+          return `${y}-${m}-${d}`;
+        }
+        return dateStr;
+      };
+
+      // 2. Augmont Payload (as per Swagger)
+      const augmontPayload = {
+        userName: formData.displayName,
+        mobileNumber: cleanMobile(mongoPayload.mobile),
+        emailId: formData.email,
+        uniqueId: finalUniqueId,
+        userState: formData.stateId, // Using official IDs
+        userCity: formData.cityId,   // Using official IDs
+        userPincode: formData.userPincode,
+        dateOfBirth: formData.dateOfBirth, // Guaranteed YYYY-MM-DD by picker
+        nomineeName: formData.nomineeName || 'N/A',
+        nomineeRelation: formData.nomineeRelation || 'N/A',
+        nomineeDateOfBirth: formData.nomineeDateOfBirth || formData.dateOfBirth
+      };
+
+      console.log("Starting Two-Way Integration...");
+
+      // A. Call MongoDB
       try {
-        const apiResponse = await createUserInDB(userPayload, token);
-        console.log('MongoDB User Creation Response:', apiResponse);
-        mongoRecordId = apiResponse?.data?._id || apiResponse?._id || null;
-        if (apiResponse?.message) isSuccessMessage = apiResponse.message;
+        const dbResponse = await createUserInDB(mongoPayload, token);
+        console.log('MongoDB Response:', dbResponse);
+        mongoRecordId = dbResponse?.data?._id || dbResponse?._id || null;
       } catch (dbError) {
-        console.log("MongoDB creation failed. Attempting Self-Healing for Orphaned Account...");
+        console.log("MongoDB failed, attempting recovery...");
+        // Recovery logic (existing)
+        const allResponse = await fetch('http://13.63.202.142:5001/api/users', {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const allUsersData = await allResponse.json();
+        const userList = Array.isArray(allUsersData) ? allUsersData : allUsersData?.data || [];
+        const existingUser = userList.find(u => u.mobile === mongoPayload.mobile);
         
-        try {
-          // Self-Healing Strategy: If MongoDB rejected the creation because the user already exists,
-          // (which happened because a previous backend crash stopped Firebase from saving completely)
-          // we fetch the user list, find their old MongoDB _id, and surgically restore the Firebase link!
-          const allResponse = await fetch('http://13.63.202.142:5001/api/users', {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          const allUsersData = await allResponse.json();
-          // Backend normally returns { data: [...] } for list views, or [...]
-          const userList = Array.isArray(allUsersData) ? allUsersData : allUsersData?.data || [];
-          
-          const existingUser = userList.find(u => u.mobile === userPayload.mobile || u.mobile === formData.mobileNumber);
-          
-          if (existingUser) {
-            console.log("Found Orphaned User! Auto-Restoring:", existingUser._id);
-            mongoRecordId = existingUser._id;
-            finalUniqueId = existingUser.uniqueId || finalUniqueId; // Re-use old uniqueId if it safely exists
-            isSuccessMessage = 'Profile safely restored and connected!';
-          } else {
-            // Unrelated error, throw it so the toast correctly shows to the user
-            throw dbError;
-          }
-        } catch (recoveryError) {
-          throw dbError; // Throw original creation error if recovery catastrophically fails
+        if (existingUser) {
+          mongoRecordId = existingUser._id;
+          finalUniqueId = existingUser.uniqueId || finalUniqueId;
+        } else {
+          throw dbError;
         }
       }
 
-      // Show Toast immediately so they can read it!
-      Toast.show({ type: 'success', text1: 'Profile Ready!', text2: isSuccessMessage, position: 'top', visibilityTime: 3000 });
+      // B. Call Augmont (Two-Way Sync)
+      try {
+        const augResponse = await createUserInAugmont(augmontPayload, token);
+        console.log('Augmont Response:', augResponse);
+        isSuccessMessage = "Profile & Augmont linked successfully!";
+      } catch (augError) {
+        console.error("Augmont integration failed but MongoDB ok:", augError);
+        isSuccessMessage = "Profile saved. Augmont sync pending.";
+        // We don't block the whole flow if Augmont fails but DB is ok, 
+        // though in production we might want to retry.
+      }
 
-      // Delay Firebase save slightly so the layout guard doesn't instantly rip them to Dashboard
+      Toast.show({ 
+        type: 'success', 
+        text1: 'Success!', 
+        text2: isSuccessMessage, 
+        position: 'top', 
+        visibilityTime: 3000 
+      });
+
+      // 3. Save to Firebase
       setTimeout(async () => {
-        // 3. Save to Firebase (using the recovered or new data)
         try {
           await updateProfile({
             displayName: formData.displayName,
@@ -125,19 +247,22 @@ export default function ProfileSetupScreen() {
             augmontUniqueId: finalUniqueId,
             mongoId: mongoRecordId,
             profileSetupComplete: true,
+            // Keep additional info for records
+            userState: formData.userState,
+            userPincode: formData.userPincode,
+            dob: formData.dateOfBirth,
           });
-          // router.replace will be naturally handled by _layout.jsx once profile is completely loaded!
         } catch (fbError) {
-          console.error("Delayed FB save failed:", fbError);
+          console.error("Firebase save failed:", fbError);
         }
       }, 1500);
 
     } catch (error) {
-      console.error("Profile save error:", error);
+      console.error("Setup error:", error);
       Toast.show({ 
         type: 'error', 
-        text1: 'Account Setup Failed',
-        text2: error?.message || 'Error setting up account. Please try again.'
+        text1: 'Setup Failed',
+        text2: error?.message || 'Error occurred'
       });
     } finally {
       setLoading(false);
@@ -168,6 +293,8 @@ export default function ProfileSetupScreen() {
           </View>
 
           <View style={styles.formContainer}>
+            <Text style={[styles.sectionTitle, { color: theme.primary }]}>Basic Information</Text>
+            
             <CustomInput
               icon="person-outline"
               theme={theme}
@@ -204,17 +331,173 @@ export default function ProfileSetupScreen() {
               value={formData.pin}
               onChangeText={(txt) => setFormData({ ...formData, pin: txt })}
             />
-          </View>
 
-          <View style={[styles.infoBox, { backgroundColor: isDarkMode ? '#1E293B' : '#F9FAFB', borderColor: theme.border }]}>
-            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-              <Text style={styles.bulb}>💡 </Text>
-              <Text style={[styles.infoBold, { color: theme.textPrimary }]}>Security Tip:</Text> Use a unique PIN to protect your digital assets. Your data is always encrypted.
-            </Text>
-          </View>
+            <View style={styles.divider} />
+            <Text style={[styles.sectionTitle, { color: theme.primary }]}>Augmont KYC Details</Text>
 
-          <View style={{ height: 40 }} />
+            <Pressable onPress={() => setShowBirthPicker(true)}>
+              <View pointerEvents="none">
+                <CustomInput
+                  icon="calendar-outline"
+                  theme={theme}
+                  placeholder="YOUR BIRTH DATE"
+                  value={formData.dateOfBirth ? formData.dateOfBirth.split('-').reverse().join('/') : ''}
+                  onChangeText={() => {}}
+                />
+              </View>
+            </Pressable>
+
+            {showBirthPicker && (
+              <DateTimePicker
+                value={formData.dateOfBirth ? new Date(formData.dateOfBirth) : new Date(2000, 0, 1)}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onBirthDateChange}
+              />
+            )}
+
+            <Pressable onPress={() => setShowStateModal(true)}>
+              <View pointerEvents="none">
+                <CustomInput
+                  icon="map-outline"
+                  theme={theme}
+                  placeholder="SELECT STATE"
+                  value={formData.userState}
+                  onChangeText={() => {}}
+                />
+              </View>
+            </Pressable>
+
+            <View style={styles.row}>
+              <View style={{ flex: 1.2, marginRight: 8 }}>
+                <Pressable onPress={() => {
+                  if (!formData.stateId) {
+                    Toast.show({ type: 'info', text1: 'Select State First' });
+                    return;
+                  }
+                  setShowCityModal(true);
+                }}>
+                  <View pointerEvents="none">
+                    <CustomInput
+                      icon="business-outline"
+                      theme={theme}
+                      placeholder="SELECT CITY"
+                      value={formData.userCity}
+                      onChangeText={() => {}}
+                    />
+                  </View>
+                </Pressable>
+              </View>
+              <View style={{ flex: 0.8 }}>
+                <CustomInput
+                  icon="location-outline"
+                  theme={theme}
+                  placeholder="PINCODE"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={formData.userPincode}
+                  onChangeText={(txt) => setFormData({ ...formData, userPincode: txt })}
+                />
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+            <Text style={[styles.sectionTitle, { color: theme.primary }]}>Nominee Information</Text>
+
+            <CustomInput
+              icon="people-outline"
+              theme={theme}
+              placeholder="NOMINEE NAME"
+              value={formData.nomineeName}
+              onChangeText={(txt) => setFormData({ ...formData, nomineeName: txt })}
+            />
+
+            <CustomInput
+              icon="git-branch-outline"
+              theme={theme}
+              placeholder="RELATION"
+              value={formData.nomineeRelation}
+              onChangeText={(txt) => setFormData({ ...formData, nomineeRelation: txt })}
+            />
+
+            <Pressable onPress={() => setShowNomineePicker(true)}>
+              <View pointerEvents="none">
+                <CustomInput
+                  icon="calendar-clear-outline"
+                  theme={theme}
+                  placeholder="NOMINEE BIRTH DATE"
+                  value={formData.nomineeDateOfBirth ? formData.nomineeDateOfBirth.split('-').reverse().join('/') : ''}
+                  onChangeText={() => {}}
+                />
+              </View>
+            </Pressable>
+
+            {showNomineePicker && (
+              <DateTimePicker
+                value={formData.nomineeDateOfBirth ? new Date(formData.nomineeDateOfBirth) : new Date(1980, 0, 1)}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onNomineeDateChange}
+              />
+            )}
+          </View>
         </ScrollView>
+
+        {/* Master Data Modals */}
+        <Modal visible={showStateModal} animationType="slide" transparent={true}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Choose State</Text>
+              <FlatList
+                data={statesList}
+                keyExtractor={(item, index) => (item.id || index).toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity 
+                    style={[styles.modalItem, { borderBottomColor: theme.border }]} 
+                    onPress={() => handleStateSelect(item)}
+                  >
+                    <Text style={[styles.modalItemText, { color: theme.textPrimary }]}>{item.name}</Text>
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity onPress={() => setShowStateModal(false)} style={styles.closeButton}>
+                <Text style={{ color: theme.primary, fontWeight: '700' }}>CLOSE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={showCityModal} animationType="slide" transparent={true}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Choose City</Text>
+              
+              {isCitiesLoading ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color={theme.primary} />
+                  <Text style={{ marginTop: 12, color: theme.textSecondary, fontWeight: '600' }}>Fetching cities...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={citiesList}
+                  keyExtractor={(item, index) => (item.id || index).toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity 
+                      style={[styles.modalItem, { borderBottomColor: theme.border }]} 
+                      onPress={() => handleCitySelect(item)}
+                    >
+                      <Text style={[styles.modalItemText, { color: theme.textPrimary }]}>{item.name}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+              
+              <TouchableOpacity onPress={() => setShowCityModal(false)} style={styles.closeButton}>
+                <Text style={{ color: theme.primary, fontWeight: '700' }}>CLOSE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.footer}>
           <TouchableOpacity 
@@ -283,6 +566,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginTop: 8,
+    marginLeft: 4,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginVertical: 10,
+  },
+  row: {
+    flexDirection: 'row',
+  },
   formContainer: {
     gap: 16,
     marginBottom: 24,
@@ -345,5 +645,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 1.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalItem: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  closeButton: {
+    marginTop: 20,
+    alignItems: 'center',
+    padding: 10,
   },
 });

@@ -1,14 +1,141 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { 
+  getAugmontBuyList, 
+  getAugmontSellList, 
+  getBuyTransactionDetail, 
+  getSellTransactionDetail 
+} from '../../services/augmontApi';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { 
+  ActivityIndicator, 
+  FlatList, 
+  Platform, 
+  ScrollView, 
+  StyleSheet, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  View,
+  Modal,
+  Dimensions
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Toast from 'react-native-toast-message';
+
+const { width, height } = Dimensions.get('window');
 
 export default function OrdersScreen() {
+  const router = useRouter();
   const { theme, isDarkMode } = useTheme();
+  const { user, userProfile } = useAuth();
   const [activeFilter, setActiveFilter] = useState('all');
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Detail Modal States
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      if (user && uniqueId) {
+        try {
+          setLoading(true);
+          const token = await user.getIdToken();
+          
+          // Fetch both Buy and Sell lists in parallel
+          const [buyRes, sellRes] = await Promise.all([
+            getAugmontBuyList(uniqueId, token),
+            getAugmontSellList(uniqueId, token)
+          ]);
+
+          const buyOrders = (buyRes?.result?.data || []).map(item => ({
+            id: item.transactionId,
+            merchantTransactionId: item.merchantTransactionId,
+            type: 'buy',
+            title: `Bought ${item.type.charAt(0).toUpperCase() + item.type.slice(1)}`,
+            date: new Date(item.createdAt).toLocaleDateString('en-IN', { 
+              day: '2-digit', month: 'short', year: 'numeric', 
+              hour: '2-digit', minute: '2-digit' 
+            }),
+            rawDate: new Date(item.createdAt),
+            amount: `-₹${parseFloat(item.inclTaxAmt).toLocaleString('en-IN')}`,
+            weight: `${parseFloat(item.qty).toFixed(4)} gm`,
+            status: 'success',
+            asset: item.type
+          }));
+
+          const sellOrders = (sellRes?.result?.data || []).map(item => ({
+            id: item.transactionId,
+            merchantTransactionId: item.merchantTransactionId,
+            type: 'sell',
+            title: `Sold ${item.type.charAt(0).toUpperCase() + item.type.slice(1)}`,
+            date: new Date(item.createdAt).toLocaleDateString('en-IN', { 
+              day: '2-digit', month: 'short', year: 'numeric', 
+              hour: '2-digit', minute: '2-digit' 
+            }),
+            rawDate: new Date(item.createdAt),
+            amount: `+₹${parseFloat(item.amount).toLocaleString('en-IN')}`,
+            weight: `${parseFloat(item.qty).toFixed(4)} gm`,
+            status: 'success',
+            asset: item.type
+          }));
+
+          // Merge and sort by date (newest first)
+          const merged = [...buyOrders, ...sellOrders].sort((a, b) => b.rawDate - a.rawDate);
+          setOrders(merged);
+        } catch (error) {
+          console.error("Failed to fetch Augmont orders:", error);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
+      }
+    };
+    
+    fetchOrders();
+  }, [user, userProfile]);
+
+  const handleOrderPress = async (order) => {
+    if (!order.merchantTransactionId) return;
+    
+    setDetailLoading(true);
+    setShowDetailModal(true);
+    try {
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      const token = await user.getIdToken();
+      let res;
+      if (order.type === 'buy') {
+        res = await getBuyTransactionDetail(order.merchantTransactionId, uniqueId, token);
+      } else {
+        res = await getSellTransactionDetail(order.merchantTransactionId, uniqueId, token);
+      }
+      
+      if (res?.result?.data) {
+        setSelectedOrderDetail({
+          ...res.result.data,
+          _orderType: order.type,
+          _displayTitle: order.title,
+          _displayDate: order.date
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch order details:", error);
+      Toast.show({ type: 'error', text1: 'Failed to load details' });
+      setShowDetailModal(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const filters = [
     { id: 'all', label: 'All' },
@@ -18,16 +145,7 @@ export default function OrdersScreen() {
     { id: 'failed', label: 'Failed' },
   ];
 
-  const orderData = [
-    { id: '1', type: 'buy', title: 'Bought Gold', date: 'Today, 10:23 AM', amount: '-₹2,500.00', weight: '0.4500 gm', status: 'success', asset: 'gold' },
-    { id: '2', type: 'sell', title: 'Sold Gold', date: 'Yesterday, 4:15 PM', amount: '+₹12,400.00', weight: '2.0000 gm', status: 'success', asset: 'gold' },
-    { id: '3', type: 'sip', title: 'Monthly SIP', date: '28 Jan 2026', amount: '-₹5,000.00', weight: '0.8120 gm', status: 'success', asset: 'gold' },
-    { id: '4', type: 'buy', title: 'Bought Silver', date: '25 Jan 2026', amount: '-₹1,200.00', weight: '15.0000 gm', status: 'success', asset: 'silver' },
-    { id: '5', type: 'bonus', title: 'Referral Bonus', date: '20 Jan 2026', amount: '+₹500.00', weight: '0.0810 gm', status: 'success', asset: 'gold' },
-    { id: '6', type: 'failed', title: 'Payment Failed', date: '15 Jan 2026', amount: '₹1,000.00', weight: '0.0000 gm', status: 'failed', asset: 'gold' },
-  ];
-
-  const filteredOrders = orderData.filter(item => {
+  const filteredOrders = orders.filter(item => {
     const matchesFilter = activeFilter === 'all' || item.type === activeFilter;
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
@@ -38,7 +156,10 @@ export default function OrdersScreen() {
     const isIncome = item.amount.startsWith('+');
     
     return (
-      <View style={[styles.orderCard, { backgroundColor: theme.card }]}>
+      <TouchableOpacity 
+        style={[styles.orderCard, { backgroundColor: theme.card }]}
+        onPress={() => handleOrderPress(item)}
+      >
         <View style={[
           styles.iconContainer, 
           isFailed ? { backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2' } : 
@@ -63,7 +184,7 @@ export default function OrdersScreen() {
           </Text>
           <Text style={[styles.weightText, { color: theme.textSecondary }]}>{item.weight}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -121,18 +242,196 @@ export default function OrdersScreen() {
         </View>
 
         {/* List */}
-        <FlatList
-          data={filteredOrders}
-          renderItem={renderOrderItem}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyView}>
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No transactions found</Text>
+        {loading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={theme.primary} />
+            <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Syncing with Augmont...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredOrders}
+            renderItem={renderOrderItem}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyView}>
+                <Ionicons name="receipt-outline" size={48} color={theme.border} />
+                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No transactions found</Text>
+              </View>
+            }
+          />
+        )}
+
+        {/* Dynamic Detail Modal */}
+        <Modal
+          visible={showDetailModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDetailModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+            <TouchableOpacity 
+              activeOpacity={1} 
+              style={styles.modalDismiss} 
+              onPress={() => setShowDetailModal(false)} 
+            />
+            
+            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+              <View style={styles.modalHandle} />
+              
+              {detailLoading ? (
+                <View style={styles.modalLoading}>
+                  <ActivityIndicator size="large" color={theme.primary} />
+                  <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Fetching Details...</Text>
+                </View>
+              ) : selectedOrderDetail ? (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.modalHeader}>
+                    <View style={[styles.assetIcon, { backgroundColor: theme.itemBg }]}>
+                      <Ionicons 
+                        name={selectedOrderDetail._orderType === 'buy' ? "arrow-down" : "arrow-up"} 
+                        size={32} 
+                        color={theme.primary} 
+                      />
+                    </View>
+                    <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+                      {selectedOrderDetail._orderType === 'buy' ? 'PURCHASE SUMMARY' : 'LIQUIDATION SUMMARY'}
+                    </Text>
+                    <View style={styles.statusBadge}>
+                      <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                      <Text style={styles.statusText}>COMPLETED</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.mainAmountCard, { backgroundColor: theme.card }]}>
+                    <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>
+                      {selectedOrderDetail._orderType === 'buy' ? 'Total Amount Paid' : 'Total Payout Value'}
+                    </Text>
+                    <Text style={[styles.mainAmountValue, { color: theme.textPrimary }]}>
+                      ₹{parseFloat(selectedOrderDetail.totalAmount || selectedOrderDetail.amount || 0).toLocaleString('en-IN')}
+                    </Text>
+                    <View style={styles.amountBadgeRow}>
+                      <View style={[styles.weightBadge, { backgroundColor: theme.itemBg }]}>
+                        <Text style={[styles.weightBadgeText, { color: theme.textPrimary }]}>{selectedOrderDetail.quantity} gm</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>TRANSACTION DETAILS</Text>
+                    
+                    {selectedOrderDetail._orderType === 'buy' ? (
+                      <View style={styles.detailItem}>
+                        <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Invoice Number</Text>
+                        <Text style={[styles.detailValue, { color: theme.textPrimary }]}>{selectedOrderDetail.invoiceNumber || 'N/A'}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.detailItem}>
+                        <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Ref Transaction ID</Text>
+                        <Text style={[styles.detailValue, { color: theme.textPrimary }]}>{selectedOrderDetail.merchantTransactionId || 'N/A'}</Text>
+                      </View>
+                    )}
+                    
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Market Rate (per gm)</Text>
+                      <Text style={[styles.detailValue, { color: theme.textPrimary }]}>₹{parseFloat(selectedOrderDetail.rate || 0).toLocaleString('en-IN')}</Text>
+                    </View>
+
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Transaction Date</Text>
+                      <Text style={[styles.detailValue, { color: theme.textPrimary }]}>{selectedOrderDetail._displayDate}</Text>
+                    </View>
+                  </View>
+
+                  {/* Sell Specific: Bank Info */}
+                  {selectedOrderDetail._orderType === 'sell' && selectedOrderDetail.bankInfo && (
+                    <View style={styles.detailSection}>
+                      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>PAYOUT DESTINATION</Text>
+                      <View style={styles.detailItem}>
+                        <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Bank Name</Text>
+                        <Text style={[styles.detailValue, { color: theme.textPrimary }]}>{selectedOrderDetail.bankInfo.bankName || 'N/A'}</Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Account Number</Text>
+                        <Text style={[styles.detailValue, { color: theme.textPrimary }]}>{selectedOrderDetail.bankInfo.accountNumber || 'N/A'}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+                      {selectedOrderDetail._orderType === 'buy' ? 'TAX BREAKDOWN' : 'PRICING BREAKDOWN'}
+                    </Text>
+                    
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>
+                        {selectedOrderDetail._orderType === 'buy' ? 'Taxable Amount' : 'Metal Value'}
+                      </Text>
+                      <Text style={[styles.detailValue, { color: theme.textPrimary }]}>₹{parseFloat(selectedOrderDetail.preTaxAmount || 0).toLocaleString('en-IN')}</Text>
+                    </View>
+
+                    {selectedOrderDetail._orderType === 'buy' && selectedOrderDetail.taxes?.taxSplit?.map((tax, idx) => (
+                      <View key={idx} style={styles.detailItem}>
+                        <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>{tax.type} ({tax.taxPerc}%)</Text>
+                        <Text style={[styles.detailValue, { color: theme.textPrimary }]}>₹{parseFloat(tax.taxAmount).toFixed(2)}</Text>
+                      </View>
+                    ))}
+
+                    {selectedOrderDetail._orderType === 'buy' && (
+                      <View style={[styles.totalTaxRow, { borderTopColor: theme.border }]}>
+                        <Text style={[styles.totalTaxLabel, { color: theme.textPrimary }]}>Total GST</Text>
+                        <Text style={[styles.totalTaxValue, { color: theme.textPrimary }]}>₹{parseFloat(selectedOrderDetail.taxes?.totalTaxAmount || 0).toFixed(2)}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>UPDATED VAULT BALANCES</Text>
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Gold Balance</Text>
+                      <Text style={[styles.detailValue, { color: theme.textPrimary }]}>
+                        {(selectedOrderDetail.goldBalance || selectedOrderDetail.goldBalanceInGM || 0)} gm
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Silver Balance</Text>
+                      <Text style={[styles.detailValue, { color: theme.textPrimary }]}>
+                        {(selectedOrderDetail.silverBalance || selectedOrderDetail.silverBalanceInGM || 0)} gm
+                      </Text>
+                    </View>
+                  </View>
+
+                  {selectedOrderDetail && (
+                    <TouchableOpacity 
+                      style={styles.downloadBtn}
+                      onPress={() => {
+                        setShowDetailModal(false);
+                        router.push({
+                          pathname: '/invoice',
+                          params: { 
+                            transactionId: selectedOrderDetail.transactionId,
+                            type: selectedOrderDetail._orderType 
+                          }
+                        });
+                      }}
+                    >
+                      <LinearGradient
+                        colors={[theme.primary, '#B45309']}
+                        style={styles.downloadBtnGrad}
+                        start={{x:0, y:0}} end={{x:1, y:1}}
+                      >
+                        <Ionicons name="document-text-outline" size={20} color="#FFF" style={{marginRight: 8}} />
+                        <Text style={styles.downloadBtnText}>VIEW & DOWNLOAD INVOICE</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+              ) : null}
             </View>
-          }
-        />
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -263,5 +562,170 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     fontWeight: '600',
+    marginTop: 12,
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 100,
+  },
+  loaderText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalDismiss: {
+    flex: 1,
+  },
+  modalContent: {
+    borderTopLeftRadius: 35,
+    borderTopRightRadius: 35,
+    padding: 24,
+    maxHeight: height * 0.85,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  modalHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  modalLoading: {
+    paddingVertical: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontWeight: '600',
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  assetIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 10,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B98115',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  statusText: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '900',
+    marginLeft: 6,
+    letterSpacing: 1,
+  },
+  mainAmountCard: {
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  amountLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  mainAmountValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    marginBottom: 16,
+  },
+  weightBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+  weightBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  detailSection: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 16,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  totalTaxRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 14,
+    marginTop: 4,
+    borderTopWidth: 1,
+  },
+  totalTaxLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  totalTaxValue: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  downloadBtn: {
+    borderRadius: 20,
+    height: 60,
+    overflow: 'hidden',
+    marginBottom: Platform.OS === 'ios' ? 20 : 0,
+  },
+  downloadBtnGrad: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadBtnText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
 });
+

@@ -34,7 +34,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const { user, loading, isProfileLoading, isProfileComplete, isSplashFinished } = useAuth();
+  const { user, loading, isProfileLoading, isProfileComplete, isSplashFinished, isMpinVerified } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -49,20 +49,38 @@ function RootLayoutNav() {
     // Don't redirect if we are currently on the splash screen and it hasn't finished yet
     if (isSplash && !isSplashFinished) return;
 
-    if (user && !isProfileComplete && !isProfileSetup) {
-      // Redirect to profile setup if authenticated but profile incomplete
-      router.replace('/profile-setup');
-    } else if (user && isProfileComplete && (inAuthGroup || isProfileSetup)) {
-      // Redirect to the tabs if authenticated and profile complete
-      router.replace('/(tabs)');
-    } else if (!user && isSplash && isSplashFinished) {
-      // Animation finished and user is purely unauthenticated -> force into intro flow
-      router.replace('/get-started');
-    } else if (!user && !inAuthGroup) {
-      // Pure fallback security guard
-      router.replace('/login');
+    // SCENARIO 1: Unauthenticated Users
+    if (!user) {
+      if (isSplash && isSplashFinished) {
+        router.replace('/get-started'); // New installers go here
+      } else if (!inAuthGroup) {
+        router.replace('/login'); // Expired sessions fallback to login
+      }
+      return;
     }
-  }, [user, loading, isProfileLoading, isProfileComplete, segments, isSplashFinished]);
+
+    // SCENARIO 2: Incomplete Profiles (Registered but didn't finish Setup)
+    if (!isProfileComplete) {
+      if (!isProfileSetup) {
+        router.replace('/profile-setup');
+      }
+      return;
+    }
+
+    // SCENARIO 3: Cold Boot Returning User (Profile complete, but session active. Demands MPIN)
+    if (!isMpinVerified) {
+      if (segments[0] !== 'verify-mpin') {
+        router.replace('/verify-mpin');
+      }
+      return;
+    }
+
+    // SCENARIO 4: Fully verified (OTP fresh, or MPIN verified). Drop them directly into Dashboard!
+    if (inAuthGroup || isProfileSetup || segments[0] === 'verify-mpin') {
+      router.replace('/(tabs)');
+    }
+
+  }, [user, loading, isProfileLoading, isProfileComplete, segments, isSplashFinished, isMpinVerified]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -71,6 +89,7 @@ function RootLayoutNav() {
         <Stack.Screen name="get-started" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="login" options={{ headerShown: false, animation: 'fade' }} />
+        <Stack.Screen name="verify-mpin" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="profile-setup" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="create-vault" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="choose-language" options={{ headerShown: false, animation: 'fade' }} />

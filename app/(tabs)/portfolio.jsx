@@ -22,6 +22,10 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from 'react-native-svg';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { getLiveRates, getUserPassbook, getAugmontBuyList } from '../../services/augmontApi';
+import { useLanguage } from '../context/LanguageContext';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 64; // 32 horizontal padding
@@ -106,7 +110,105 @@ function PerformanceChart({ data, themeColor, isDarkMode }) {
 
 export default function PortfolioScreen() {
   const { theme, isDarkMode } = useTheme();
+  const { user, userProfile } = useAuth();
+  const { t } = useLanguage();
+  const router = useRouter();
   const [activePeriod, setActivePeriod] = useState('6M');
+  const [liveRatesData, setLiveRatesData] = useState(null);
+  const [passbookData, setPassbookData] = useState(null);
+  const [buyList, setBuyList] = useState([]);
+  const [portfolioHistory, setPortfolioHistory] = useState([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+  // Fetch Live Rates
+  useEffect(() => {
+    const fetchRates = async () => {
+      try {
+        const data = await getLiveRates();
+        if (data && data.result && data.result.data) {
+          const rates = data.result.data.rates;
+          setLiveRatesData(rates);
+          
+          // Live Session Accumulation
+          setPortfolioHistory(prev => {
+             const gW = parseFloat(passbookData?.goldGrms || 0);
+             const sW = parseFloat(passbookData?.silverGrms || 0);
+             const currentTotal = (gW * parseFloat(rates.gBuy)) + (sW * parseFloat(rates.sBuy));
+             if (currentTotal > 0) {
+               const newHist = [...prev, currentTotal];
+               return newHist.slice(-20);
+             }
+             return prev;
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch rates:', error);
+      }
+    };
+    fetchRates();
+    const interval = setInterval(fetchRates, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Sync Augmont Portfolio
+  useEffect(() => {
+    const syncPortfolio = async () => {
+      const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+      if (user && uniqueId) {
+        try {
+          const token = await user.getIdToken();
+          const [pbResponse, blResponse] = await Promise.all([
+            getUserPassbook(uniqueId, token),
+            getAugmontBuyList(uniqueId, token)
+          ]);
+          if (pbResponse && pbResponse.result) setPassbookData(pbResponse.result.data);
+          if (blResponse && blResponse.result) {
+            const list = blResponse.result.data;
+            setBuyList(list);
+            
+            // Initialization: Start from Investment Cost and trend towards current value
+            const invested = list.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt || 0), 0);
+            const gW = parseFloat(pbResponse.result.data?.goldGrms || 0);
+            const sW = parseFloat(pbResponse.result.data?.silverGrms || 0);
+            const currentVal = (gW * parseFloat(liveRatesData?.gBuy || 0)) + (sW * parseFloat(liveRatesData?.sBuy || 0));
+            
+            if (invested > 0) {
+              const initialTrend = [];
+              const steps = 10;
+              for(let i=0; i<steps; i++) {
+                initialTrend.push(invested + ((currentVal - invested) * (i/steps) * (0.9 + Math.random()*0.2)));
+              }
+              setPortfolioHistory(initialTrend);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to sync Portfolio:", error);
+        }
+      }
+    };
+    syncPortfolio();
+  }, [user, userProfile]);
+
+  // Dynamic Portfolio Calculations
+  const goldWeight = parseFloat(passbookData?.goldGrms || 0);
+  const silverWeight = parseFloat(passbookData?.silverGrms || 0);
+  
+  const goldRate = parseFloat(liveRatesData?.gBuy || 0);
+  const silverRate = parseFloat(liveRatesData?.sBuy || 0);
+
+  const goldValue = goldWeight * goldRate;
+  const silverValue = silverWeight * silverRate;
+  const totalValue = goldValue + silverValue;
+
+  // Investment Cost (Exclusive of Tax)
+  const totalInvested = buyList.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt || 0), 0);
+  const totalReturns = totalInvested > 0 ? totalValue - totalInvested : 0;
+  const returnsPercent = totalInvested > 0 ? (totalReturns / totalInvested) * 100 : 0;
+  
+  const isProfit = totalReturns >= 0;
+
+  // Formatter helpers
+  const fmtInt = (val) => Math.floor(val).toLocaleString('en-IN');
+  const fmtDec = (val) => (val % 1).toFixed(2).split('.')[1] || '00';
   
   const chartData = {
     '1M': [50, 60, 55, 65, 70, 62, 75, 80, 72, 85, 90, 88, 95],
@@ -120,7 +222,10 @@ export default function PortfolioScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={[styles.headerBtn, { backgroundColor: theme.card }]}>
+          <TouchableOpacity 
+            style={[styles.headerBtn, { backgroundColor: theme.card }]}
+            onPress={() => router.back()}
+          >
             <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Assets</Text>
@@ -133,15 +238,15 @@ export default function PortfolioScreen() {
         <View style={[styles.portfolioCard, { backgroundColor: theme.card }]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>CURRENT VALUE</Text>
-            <View style={[styles.profitBadge, { backgroundColor: isDarkMode ? '#064E3B' : '#ECFDF5' }]}>
-              <Ionicons name="trending-up" size={12} color="#10B981" />
-              <Text style={styles.profitText}>+12.5%</Text>
+            <View style={[styles.profitBadge, { backgroundColor: isProfit ? (isDarkMode ? '#064E3B' : '#ECFDF5') : (isDarkMode ? '#450a0a' : '#FEF2F2') }]}>
+              <Ionicons name={isProfit ? "trending-up" : "trending-down"} size={12} color={isProfit ? "#10B981" : "#EF4444"} />
+              <Text style={[styles.profitText, { color: isProfit ? "#10B981" : "#EF4444" }]}>{isProfit ? '+' : ''}{returnsPercent.toFixed(1)}%</Text>
             </View>
           </View>
           <View style={styles.valueRow}>
             <Text style={[styles.currency, { color: theme.textPrimary }]}>₹</Text>
-            <Text style={[styles.mainValue, { color: theme.textPrimary }]}>1,59,385</Text>
-            <Text style={[styles.decimals, { color: theme.textSecondary }]}>.40</Text>
+            <Text style={[styles.mainValue, { color: theme.textPrimary }]}>{fmtInt(totalValue)}</Text>
+            <Text style={[styles.decimals, { color: theme.textSecondary }]}>.{fmtDec(totalValue)}</Text>
           </View>
           
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -149,11 +254,13 @@ export default function PortfolioScreen() {
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Invested</Text>
-              <Text style={[styles.statValue, { color: theme.textPrimary }]}>₹1,43,000</Text>
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>₹{Math.floor(totalInvested).toLocaleString('en-IN')}</Text>
             </View>
             <View style={styles.statItem}>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Returns</Text>
-              <Text style={[styles.statValue, { color: '#10B981' }]}>+ ₹16,385</Text>
+              <Text style={[styles.statValue, { color: isProfit ? '#10B981' : '#EF4444' }]}>
+                {isProfit ? '+' : '-'} ₹{Math.floor(Math.abs(totalReturns)).toLocaleString('en-IN')}
+              </Text>
             </View>
           </View>
         </View>
@@ -163,18 +270,17 @@ export default function PortfolioScreen() {
           <View style={styles.perfHeader}>
             <Text style={[styles.perfTitle, { color: theme.textPrimary }]}>Performance</Text>
             <View style={[styles.periodTabs, { backgroundColor: theme.background }]}>
-              {['1M', '6M', '1Y', 'All'].map(p => (
+              {['Live'].map(p => (
                 <TouchableOpacity 
                   key={p} 
-                  style={[styles.periodBtn, activePeriod === p && styles.periodBtnActive, activePeriod === p && { backgroundColor: theme.card }]}
-                  onPress={() => setActivePeriod(p)}
+                  style={[styles.periodBtn, styles.periodBtnActive, { backgroundColor: theme.card }]}
                 >
-                  <Text style={[styles.periodText, { color: theme.textSecondary }, activePeriod === p && { color: theme.textPrimary }]}>{p}</Text>
+                  <Text style={[styles.periodText, { color: theme.textPrimary }]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          <PerformanceChart data={chartData[activePeriod]} themeColor={theme.primary} isDarkMode={isDarkMode} />
+          <PerformanceChart data={portfolioHistory} themeColor={theme.primary} isDarkMode={isDarkMode} />
         </View>
 
         {/* Real Gold Jewellery Banner */}
@@ -216,8 +322,8 @@ export default function PortfolioScreen() {
               <Text style={[styles.assetMeta, { color: theme.textSecondary }]}>99.9% Purity • Augmont Secured</Text>
             </View>
             <View style={styles.assetValues}>
-              <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>24.50 gm</Text>
-              <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹1,52,000</Text>
+              <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>{goldWeight.toFixed(4)} gm</Text>
+              <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹{goldValue.toLocaleString('en-IN')}</Text>
             </View>
           </View>
 
@@ -233,8 +339,8 @@ export default function PortfolioScreen() {
               <Text style={[styles.assetMeta, { color: theme.textSecondary }]}>99.9% Purity • Insured Vault</Text>
             </View>
             <View style={styles.assetValues}>
-              <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>100.25 gm</Text>
-              <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹7,385</Text>
+              <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>{silverWeight.toFixed(4)} gm</Text>
+              <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹{silverValue.toLocaleString('en-IN')}</Text>
             </View>
           </View>
         </View>
