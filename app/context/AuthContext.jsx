@@ -56,7 +56,12 @@ export function AuthProvider({ children }) {
           if (allResponse.ok) {
             const allUsersData = await allResponse.json();
             const userList = Array.isArray(allUsersData) ? allUsersData : (allUsersData?.data || []);
-            const existingUser = userList.find(u => u.mobile === user.phoneNumber);
+            // Try exact match or base 10-digit match in case of formatting differences
+            const userPhoneBase = user.phoneNumber ? user.phoneNumber.slice(-10) : '';
+            const existingUser = userList.find(u => 
+              u.mobile === user.phoneNumber || 
+              (userPhoneBase && u.mobile && u.mobile.includes(userPhoneBase))
+            );
             
             if (existingUser && existingUser.name) {
               console.log("Auto-Restoring Firebase Profile...");

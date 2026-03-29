@@ -200,8 +200,20 @@ export default function PortfolioScreen() {
   const silverValue = silverWeight * silverRate;
   const totalValue = goldValue + silverValue;
 
-  // Investment Cost (Exclusive of Tax)
-  const totalInvested = buyList.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt || 0), 0);
+  // Investment Cost (Using Cost-Basis for currently held assets)
+  const goldPurchases = buyList.filter(item => item.type === 'gold');
+  const totalGoldBoughtAmt = goldPurchases.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt || 0), 0);
+  const totalGoldBoughtQty = goldPurchases.reduce((acc, curr) => acc + parseFloat(curr.qty || 0), 0);
+  const avgGoldPrice = totalGoldBoughtQty > 0 ? (totalGoldBoughtAmt / totalGoldBoughtQty) : 0;
+  const investedInGold = goldWeight * avgGoldPrice;
+
+  const silverPurchases = buyList.filter(item => item.type === 'silver');
+  const totalSilverBoughtAmt = silverPurchases.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt || 0), 0);
+  const totalSilverBoughtQty = silverPurchases.reduce((acc, curr) => acc + parseFloat(curr.qty || 0), 0);
+  const avgSilverPrice = totalSilverBoughtQty > 0 ? (totalSilverBoughtAmt / totalSilverBoughtQty) : 0;
+  const investedInSilver = silverWeight * avgSilverPrice;
+
+  const totalInvested = investedInGold + investedInSilver;
   const totalReturns = totalInvested > 0 ? totalValue - totalInvested : 0;
   const returnsPercent = totalInvested > 0 ? (totalReturns / totalInvested) * 100 : 0;
   

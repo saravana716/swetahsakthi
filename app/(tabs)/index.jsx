@@ -25,6 +25,7 @@ const LANGUAGES = [
 export default function DashboardScreen() {
   const router = useRouter();
   const [langModalVisible, setLangModalVisible] = useState(false);
+  const [showCalcInfo, setShowCalcInfo] = useState(false); // Modal state for calculation
   const { language, setLanguage, t } = useLanguage();
   const { isGold, setIsGold, theme, isDarkMode } = useTheme();
   const { user, userProfile } = useAuth();
@@ -205,9 +206,18 @@ export default function DashboardScreen() {
   const currentRate = isGold ? (liveRatesData?.gBuy || 0) : (liveRatesData?.sBuy || 0);
   const calculatedValue = parseFloat(rawWeight) * parseFloat(currentRate);
 
-  // Dynamic Investment & Profit Calculation
+  // Dynamic Investment & Profit Calculation (Using Cost-Basis)
   const filteredPurchases = buyList.filter(item => item.type === (isGold ? 'gold' : 'silver'));
-  const totalInvested = filteredPurchases.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt), 0);
+  const totalBoughtAmt = filteredPurchases.reduce((acc, curr) => acc + parseFloat(curr.exclTaxAmt || curr.inclTaxAmt || 0), 0);
+  const totalBoughtQty = filteredPurchases.reduce((acc, curr) => acc + parseFloat(curr.qty || 0), 0);
+  
+  // Calculate average buy price per gram
+  const avgBuyPrice = totalBoughtQty > 0 ? (totalBoughtAmt / totalBoughtQty) : 0;
+  
+  // True active investment is the CURRENT balance multiplied by the historical average buy price
+  const activeBalance = parseFloat(rawWeight) || 0;
+  const totalInvested = activeBalance * avgBuyPrice;
+  
   const netProfit = totalInvested > 0 ? calculatedValue - totalInvested : 0;
   const pPercentage = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
 
@@ -334,13 +344,20 @@ export default function DashboardScreen() {
                 <Text style={[styles.statValDec, { color: theme.textPrimary }]}>{investedDec}</Text>
               </View>
             </View>
-            <View style={[styles.statSide, { alignItems: 'flex-end' }]}>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">NET PROFIT</Text>
+            <TouchableOpacity 
+              style={[styles.statSide, { alignItems: 'flex-end' }]} 
+              onPress={() => setShowCalcInfo(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.statLabel, { color: theme.textSecondary, marginRight: 4 }]} numberOfLines={1} ellipsizeMode="tail">NET PROFIT</Text>
+                <Ionicons name="information-circle-outline" size={12} color={theme.textSecondary} />
+              </View>
               <View style={styles.statValRow}>
                 <Text style={[styles.statValueProfit, { color: isProfit ? '#22C55E' : '#EF4444' }]}>{profitValInt}</Text>
                 <Text style={[styles.statValProfitDec, { color: isProfit ? '#22C55E' : '#EF4444' }]}>{profitValDec}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -610,6 +627,80 @@ export default function DashboardScreen() {
             </ScrollView>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Dynamic Calculation Info Modal */}
+      <Modal visible={showCalcInfo} transparent animationType="slide" onRequestClose={() => setShowCalcInfo(false)}>
+        <View style={styles.langModalContainer}>
+          <TouchableOpacity style={styles.langModalOverlay} activeOpacity={1} onPress={() => setShowCalcInfo(false)} />
+          <View style={[styles.bottomSheet, { backgroundColor: theme.card, paddingBottom: 40 }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
+            
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: theme.textPrimary }]}>How it Works</Text>
+              <TouchableOpacity onPress={() => setShowCalcInfo(false)} style={styles.sheetCloseBtn}>
+                <Ionicons name="close-circle" size={28} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10 }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 14, marginBottom: 20, lineHeight: 20 }}>
+                Your dashboard calculates your personal wealth in real-time based on live market pricing.
+              </Text>
+
+              {/* Step 1 */}
+              <View style={{ backgroundColor: isDarkMode ? '#1E293B' : '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 16 }}>
+                <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '700', marginBottom: 12, letterSpacing: 0.5 }}>STEP 1: LIVE VAULT VALUATION</Text>
+                
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 14 }}>Your {isGold ? 'Gold' : 'Silver'} Balance</Text>
+                  <Text style={{ color: theme.textPrimary, fontSize: 14, fontWeight: '600' }}>{balanceInt}g</Text>
+                </View>
+                
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 14 }}>× Live Market Price (1g)</Text>
+                  <Text style={{ color: theme.primary, fontSize: 14, fontWeight: '600' }}>{liveRateInt}{liveRateDec}</Text>
+                </View>
+
+                <View style={{ height: 1, backgroundColor: theme.border, marginBottom: 12 }} />
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.textPrimary, fontSize: 15, fontWeight: '700' }}>= Current Portfolio Value</Text>
+                  <Text style={{ color: theme.textPrimary, fontSize: 15, fontWeight: '700' }}>₹{calculatedValue ? calculatedValue.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'}</Text>
+                </View>
+              </View>
+
+              {/* Step 2 */}
+              <View style={{ backgroundColor: isDarkMode ? '#1E293B' : '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 24 }}>
+                <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '700', marginBottom: 12, letterSpacing: 0.5 }}>STEP 2: RETURN ON INVESTMENT</Text>
+                
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 14 }}>Current Portfolio Value</Text>
+                  <Text style={{ color: theme.textPrimary, fontSize: 14, fontWeight: '600' }}>₹{calculatedValue ? calculatedValue.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'}</Text>
+                </View>
+                
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 14 }}>- Total Original Investment</Text>
+                  <Text style={{ color: '#EF4444', fontSize: 14, fontWeight: '600' }}>{investedInt}{investedDec}</Text>
+                </View>
+
+                <View style={{ height: 1, backgroundColor: theme.border, marginBottom: 12 }} />
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: isProfit ? '#22C55E' : '#EF4444', fontSize: 15, fontWeight: '700' }}>= Dynamic Net Profit</Text>
+                  <Text style={{ color: isProfit ? '#22C55E' : '#EF4444', fontSize: 15, fontWeight: '700' }}>{profitValInt}{profitValDec} ({profitPercent})</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity 
+                style={{ backgroundColor: theme.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center' }}
+                onPress={() => setShowCalcInfo(false)}
+              >
+                <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>GOT IT</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
     </SafeAreaView>

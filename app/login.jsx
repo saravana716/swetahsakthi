@@ -239,7 +239,10 @@ export default function LoginScreen() {
               
               <TouchableOpacity 
                 activeOpacity={1}
-                onPress={() => otpInputRef.current?.focus()}
+                onPress={() => {
+                  otpInputRef.current?.blur();
+                  setTimeout(() => otpInputRef.current?.focus(), 50);
+                }}
                 style={styles.otpContainer}
               >
                 {[0, 1, 2, 3, 4, 5].map((index) => (

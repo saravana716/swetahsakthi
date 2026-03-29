@@ -449,6 +449,7 @@ export default function ProfileSetupScreen() {
             <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
               <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Choose State</Text>
               <FlatList
+                style={{ flex: 1, width: '100%' }}
                 data={statesList}
                 keyExtractor={(item, index) => (item.id || index).toString()}
                 renderItem={({ item }) => (
@@ -479,6 +480,7 @@ export default function ProfileSetupScreen() {
                 </View>
               ) : (
                 <FlatList
+                  style={{ flex: 1, width: '100%' }}
                   data={citiesList}
                   keyExtractor={(item, index) => (item.id || index).toString()}
                   renderItem={({ item }) => (
@@ -655,7 +657,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '80%',
+    height: '80%', // Fixed height prevents Android collapse
   },
   modalTitle: {
     fontSize: 18,
