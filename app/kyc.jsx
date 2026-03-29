@@ -125,6 +125,17 @@ export default function KYCScreen() {
   const [localStatus, setLocalStatus] = useState(userProfile?.kycStatus || 'pending');
   const [liveKycData, setLiveKycData] = useState(null);
   
+  // KYC Fields
+  const [panNumber, setPanNumber] = useState('');
+  const [nameAsPerPan, setNameAsPerPan] = useState(userProfile?.displayName || '');
+  const [dateOfBirth, setDateOfBirth] = useState(userProfile?.dateOfBirth || '');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  
+  // New Image States
+  const [panImage, setPanImage] = useState(null);
+  const [aadharNumber, setAadharNumber] = useState('');
+  const [aadharImage, setAadharImage] = useState(null);
+
   // 1. Initial Status Sync
   useEffect(() => {
     const syncStatus = async () => {
@@ -168,17 +179,6 @@ export default function KYCScreen() {
   if (localStatus === 'approved') {
     return <VerifiedSuccessView theme={theme} isDarkMode={isDarkMode} router={router} userProfile={userProfile} />;
   }
-  
-  // KYC Fields
-  const [panNumber, setPanNumber] = useState('');
-  const [nameAsPerPan, setNameAsPerPan] = useState(userProfile?.displayName || '');
-  const [dateOfBirth, setDateOfBirth] = useState(userProfile?.dateOfBirth || '');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  
-  // New Image States
-  const [panImage, setPanImage] = useState(null);
-  const [aadharNumber, setAadharNumber] = useState('');
-  const [aadharImage, setAadharImage] = useState(null);
 
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
