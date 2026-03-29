@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Switch } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -104,7 +105,7 @@ export default function AccountScreen() {
         </View>
 
         {/* Profile Card */}
-        <View style={[styles.profileCard, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.duration(600).delay(100)} style={[styles.profileCard, { backgroundColor: theme.card }]}>
           <View style={styles.avatarWrap}>
             <View style={[styles.avatar, { backgroundColor: theme.itemBg, borderColor: theme.border }]}>
               <Text style={[styles.avatarLetter, { color: theme.primary }]}>
@@ -153,14 +154,14 @@ export default function AccountScreen() {
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>TENURE</Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Settings Group */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SETTINGS</Text>
         </View>
         
-        <View style={[styles.settingsGroup, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.duration(500).delay(200)} style={[styles.settingsGroup, { backgroundColor: theme.card }]}>
           <SettingItem 
             icon="person-outline" 
             title="Personal Information" 
@@ -197,16 +198,18 @@ export default function AccountScreen() {
             subtitle="FAQs, Contact Us"
             isLast={true}
           />
-        </View>
+        </Animated.View>
 
         {/* Logout */}
-        <TouchableOpacity 
-          style={[styles.logoutBtn, { backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2', borderColor: isDarkMode ? '#7f1d1d' : '#FEE2E2' }]}
-          onPress={handleLogout}
-        >
-          <Ionicons name="log-out-outline" size={20} color="#EF4444" style={{ marginRight: 8 }} />
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
+        <Animated.View entering={FadeInUp.duration(500).delay(300)}>
+          <TouchableOpacity 
+            style={[styles.logoutBtn, { backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2', borderColor: isDarkMode ? '#7f1d1d' : '#FEE2E2' }]}
+            onPress={handleLogout}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#EF4444" style={{ marginRight: 8 }} />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </Animated.View>
 
         <Text style={[styles.versionText, { color: theme.textSecondary }]}>Version 1.0.4 (2026)</Text>
 

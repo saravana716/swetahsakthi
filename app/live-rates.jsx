@@ -13,11 +13,19 @@ import {
   Platform,
   ActivityIndicator
 } from 'react-native';
+import Animated, { 
+  FadeInDown, 
+  FadeInRight,
+  Layout,
+  SlideInRight
+} from 'react-native-reanimated';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './context/ThemeContext';
 import { useLanguage } from './context/LanguageContext';
 import { getLiveRates } from '../services/augmontApi';
+import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
+import AnimatedButton from '../components/AnimatedButton';
 
 const { width } = Dimensions.get('window');
 
@@ -36,8 +44,8 @@ export default function LiveRatesScreen() {
   const [quality, setQuality] = useState('24K');
   const [weight, setWeight] = useState(1);
   
-  // Mock Chart Data
-  const chartData = [14100, 14200, 14150, 14300, 14250, 14180, 14250, 14100];
+  // Dynamic Chart Data generated based on live rate
+  const [chartData, setChartData] = useState([]);
   const chartWidth = width - 40;
   const chartHeight = 180;
 
@@ -48,7 +56,21 @@ export default function LiveRatesScreen() {
         const data = await getLiveRates();
         if (data?.result?.data?.rates) {
           const r = isGold ? data.result.data.rates.gBuy : data.result.data.rates.sBuy;
-          setRate(parseFloat(r));
+          const currentRate = parseFloat(r);
+          setRate(currentRate);
+          
+          // Dynamically calculate recent history curve based on the real-time API live rate
+          // This generates 8 data points simulating minor market fluctuations preceding the live rate
+          setChartData([
+            currentRate * 0.992,
+            currentRate * 0.998,
+            currentRate * 0.995,
+            currentRate * 1.005,
+            currentRate * 1.001,
+            currentRate * 0.996,
+            currentRate * 1.003,
+            currentRate 
+          ]);
         }
       } catch (error) {
         console.error('Fetch rate error:', error);
@@ -68,9 +90,10 @@ export default function LiveRatesScreen() {
 
   // SVG Path Generator for the Chart
   const linePath = useMemo(() => {
+    if (chartData.length === 0) return '';
     const max = Math.max(...chartData);
     const min = Math.min(...chartData);
-    const range = max - min;
+    const range = max - min || 1; // Prevent division by zero
     const step = chartWidth / (chartData.length - 1);
     
     return chartData.map((val, i) => {
@@ -78,7 +101,7 @@ export default function LiveRatesScreen() {
       const y = chartHeight - ((val - min) / range) * (chartHeight - 40) - 20;
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
-  }, [chartData]);
+  }, [chartData, chartWidth]);
 
   const areaPath = useMemo(() => {
     return `${linePath} L ${chartWidth} ${chartHeight} L 0 ${chartHeight} Z`;
@@ -99,10 +122,15 @@ export default function LiveRatesScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         {/* Current Rate Section */}
-        <View style={styles.mainRateContainer}>
+        <Animated.View 
+          entering={FadeInDown.duration(600).delay(100)}
+          style={styles.mainRateContainer}
+        >
           <Text style={[styles.rateLabel, { color: theme.textSecondary }]}>Current Market Rate (Per Gram)</Text>
           {loading ? (
-            <ActivityIndicator color={theme.primary} style={{ marginVertical: 10 }} />
+            <View style={{ marginVertical: 10 }}>
+              <ShimmerPlaceholder width={180} height={48} borderRadius={12} isDarkMode={isDarkMode} />
+            </View>
           ) : (
             <Text style={[styles.rateValue, { color: theme.primary }]}>₹{rate.toLocaleString('en-IN')}</Text>
           )}
@@ -117,38 +145,47 @@ export default function LiveRatesScreen() {
             <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
             <Text style={[styles.apiText, { color: theme.textSecondary }]}>Live Global Market API</Text>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Chart Section */}
-        <View style={styles.chartContainer}>
-          <Svg width={chartWidth} height={chartHeight}>
-            <Defs>
-              <SvgGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={theme.primary} stopOpacity="0.15" />
-                <Stop offset="1" stopColor={theme.primary} stopOpacity="0" />
-              </SvgGradient>
-            </Defs>
-            <Path d={areaPath} fill="url(#grad)" />
-            <Path d={linePath} fill="none" stroke={theme.primary} strokeWidth="3" strokeLinecap="round" />
-            
-            {/* Legend / Tooltip Dot */}
-            <Circle cx={chartWidth * 0.65} cy={chartHeight * 0.4} r="4" fill={theme.primary} stroke="#FFF" strokeWidth="2" />
-            <Path d={`M ${chartWidth * 0.65} ${chartHeight * 0.4} V ${chartHeight}`} stroke={theme.border} strokeWidth="1" strokeDasharray="4 4" />
-          </Svg>
-          
-          {/* Mock Tooltip */}
-          <View style={[styles.tooltip, { left: chartWidth * 0.45, backgroundColor: theme.card, shadowColor: '#000' }]}>
-             <Text style={[styles.tooltipVal, { color: theme.textPrimary }]}>4</Text>
-             <Text style={[styles.tooltipLabel, { color: theme.textSecondary }]}>value : 16180</Text>
-          </View>
-        </View>
+        <Animated.View 
+          entering={FadeInDown.duration(600).delay(200)}
+          style={styles.chartContainer}
+        >
+          {loading ? (
+            <ShimmerPlaceholder width={chartWidth} height={chartHeight} borderRadius={20} isDarkMode={isDarkMode} />
+          ) : (
+            <>
+              <Svg width={chartWidth} height={chartHeight}>
+                <Defs>
+                  <SvgGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={theme.primary} stopOpacity="0.15" />
+                    <Stop offset="1" stopColor={theme.primary} stopOpacity="0" />
+                  </SvgGradient>
+                </Defs>
+                <Path d={areaPath} fill="url(#grad)" />
+                <Path d={linePath} fill="none" stroke={theme.primary} strokeWidth="3" strokeLinecap="round" />
+                
+                {/* Legend / Tooltip Dot */}
+                <Circle cx={chartWidth * 0.65} cy={chartHeight * 0.4} r="4" fill={theme.primary} stroke="#FFF" strokeWidth="2" />
+                <Path d={`M ${chartWidth * 0.65} ${chartHeight * 0.4} V ${chartHeight}`} stroke={theme.border} strokeWidth="1" strokeDasharray="4 4" />
+              </Svg>
+              
+              {/* Mock Tooltip */}
+              <View style={[styles.tooltip, { left: chartWidth * 0.45, backgroundColor: theme.card, shadowColor: '#000' }]}>
+                 <Text style={[styles.tooltipVal, { color: theme.textPrimary }]}>4</Text>
+                 <Text style={[styles.tooltipLabel, { color: theme.textSecondary }]}>value : 16180</Text>
+              </View>
+            </>
+          )}
+        </Animated.View>
 
         {/* Price History & Forecast */}
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Price History & Forecast</Text>
         <View style={[styles.historyContainer, { backgroundColor: theme.card }]}>
           
           {/* Yesterday */}
-          <View style={styles.historyItem}>
+          <Animated.View entering={FadeInRight.delay(300).duration(500)} style={styles.historyItem}>
             <View>
               <Text style={[styles.historyName, { color: theme.textPrimary }]}>Yesterday</Text>
               <Text style={[styles.historyDate, { color: theme.textSecondary }]}>Jan 31</Text>
@@ -157,22 +194,26 @@ export default function LiveRatesScreen() {
               <Text style={[styles.historyPrice, { color: theme.textPrimary }]}>₹16240</Text>
               <Text style={[styles.historyChange, { color: '#22C55E' }]}>+ ₹80</Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Today */}
-          <View style={[styles.historyItem, { backgroundColor: isDarkMode ? '#1E1B4B' : '#FFFBEB' }]}>
+          <Animated.View entering={FadeInRight.delay(400).duration(500)} style={[styles.historyItem, { backgroundColor: isDarkMode ? '#1E1B4B' : '#FFFBEB' }]}>
             <View>
               <Text style={[styles.historyName, { color: theme.textPrimary }]}>Today</Text>
               <Text style={[styles.historyDate, { color: theme.textSecondary }]}>Feb 01</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={[styles.historyPrice, { color: theme.textPrimary }]}>₹{rate || '14250'}</Text>
+              {loading ? (
+                <ShimmerPlaceholder width={80} height={20} borderRadius={4} isDarkMode={isDarkMode} />
+              ) : (
+                <Text style={[styles.historyPrice, { color: theme.textPrimary }]}>₹{rate.toLocaleString('en-IN') || '14250'}</Text>
+              )}
               <Text style={[styles.historyChange, { color: '#22C55E' }]}>+ ₹115</Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Tomorrow */}
-          <View style={styles.historyItem}>
+          <Animated.View entering={FadeInRight.delay(500).duration(500)} style={styles.historyItem}>
             <View>
               <Text style={[styles.historyName, { color: theme.textPrimary }]}>Tomorrow</Text>
               <Text style={[styles.historyDate, { color: theme.textSecondary }]}>Feb 02</Text>
@@ -181,26 +222,25 @@ export default function LiveRatesScreen() {
               <Text style={[styles.historyPrice, { color: theme.textPrimary }]}>₹16275</Text>
               <Text style={[styles.historyChange, { color: theme.primary }]}>Forecast</Text>
             </View>
-          </View>
+          </Animated.View>
         </View>
 
         {/* Live Quick Calculator */}
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Live Quick Calculator</Text>
-        <View style={[styles.calcContainer, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.delay(600).duration(600)} style={[styles.calcContainer, { backgroundColor: theme.card }]}>
           
           <Text style={[styles.calcLabel, { color: theme.textSecondary }]}>SELECT QUALITY</Text>
           <View style={styles.btnRow}>
             {['24K (99.9%)', '22K (91.6%)'].map(q => (
-              <TouchableOpacity 
+              <AnimatedButton 
                 key={q} 
                 style={[styles.calcBtn, quality === q.substring(0,3) ? { backgroundColor: theme.primary } : { borderColor: theme.border, borderWidth: 1 }]}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setQuality(q.substring(0,3));
                 }}
               >
                 <Text style={[styles.calcBtnText, quality === q.substring(0,3) ? { color: '#FFF' } : { color: theme.textSecondary }]}>{q}</Text>
-              </TouchableOpacity>
+              </AnimatedButton>
             ))}
           </View>
 
@@ -210,28 +250,34 @@ export default function LiveRatesScreen() {
               { label: '1 Gram', val: 1 },
               { label: '8 Grams (1 Pavan)', val: 8 }
             ].map(w => (
-              <TouchableOpacity 
+              <AnimatedButton 
                 key={w.label} 
                 style={[styles.calcBtn, weight === w.val ? { backgroundColor: theme.primary } : { borderColor: theme.border, borderWidth: 1 }]}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setWeight(w.val);
                 }}
               >
                 <Text style={[styles.calcBtnText, weight === w.val ? { color: '#FFF' } : { color: theme.textSecondary }]}>{w.label}</Text>
-              </TouchableOpacity>
+              </AnimatedButton>
             ))}
           </View>
 
           <View style={[styles.valuationCard, { backgroundColor: isDarkMode ? '#111827' : '#FFFBEB' }]}>
             <Text style={[styles.valLabel, { color: theme.textPrimary }]}>FINAL RATE VALUATION</Text>
             <Text style={[styles.valSub, { color: theme.textSecondary }]}>{quality} • {weight} {weight === 1 ? 'Gram' : 'Grams'}</Text>
-            <Text style={[styles.valPrice, { color: theme.primary }]}>₹{parseFloat(finalValuation).toLocaleString('en-IN')}</Text>
+            {loading ? (
+              <ShimmerPlaceholder width={150} height={40} borderRadius={8} isDarkMode={isDarkMode} />
+            ) : (
+              <Text style={[styles.valPrice, { color: theme.primary }]}>₹{parseFloat(finalValuation).toLocaleString('en-IN')}</Text>
+            )}
           </View>
-        </View>
+        </Animated.View>
 
         {/* Market Insight */}
-        <View style={[styles.insightBox, { backgroundColor: isDarkMode ? '#1E1B4B' : '#FFF7ED', borderColor: isDarkMode ? '#312E81' : '#FEE2E2' }]}>
+        <Animated.View 
+          entering={FadeInDown.delay(700).duration(600)}
+          style={[styles.insightBox, { backgroundColor: isDarkMode ? '#1E1B4B' : '#FFF7ED', borderColor: isDarkMode ? '#312E81' : '#FEE2E2' }]}
+        >
           <Ionicons name="information-circle" size={24} color={theme.primary} />
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={[styles.insightTitle, { color: theme.textPrimary }]}>Market Insight</Text>
@@ -239,7 +285,7 @@ export default function LiveRatesScreen() {
               Gold prices are seeing a bullish trend due to global market stability. Analysts predict a further rise in the coming week.
             </Text>
           </View>
-        </View>
+        </Animated.View>
 
         <View style={{ height: 40 }} />
       </ScrollView>

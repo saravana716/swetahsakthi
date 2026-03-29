@@ -84,20 +84,26 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack initialRouteName="index">
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="get-started" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="login" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="verify-mpin" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="profile-setup" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="create-vault" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="choose-language" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="referral" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="buy" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="sell" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="referral-rewards" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+      <Stack 
+        initialRouteName="index"
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="index" options={{ animation: 'fade' }} />
+        <Stack.Screen name="get-started" options={{ animation: 'fade' }} />
+        <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+        <Stack.Screen name="login" options={{ animation: 'fade' }} />
+        <Stack.Screen name="verify-mpin" options={{ animation: 'fade' }} />
+        <Stack.Screen name="profile-setup" options={{ animation: 'fade' }} />
+        <Stack.Screen name="create-vault" options={{ animation: 'fade' }} />
+        <Stack.Screen name="choose-language" options={{ animation: 'fade' }} />
+        <Stack.Screen name="referral" options={{ animation: 'fade' }} />
+        <Stack.Screen name="notifications" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="buy" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="sell" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="referral-rewards" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Vibration
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 import { useTheme } from './context/ThemeContext';
@@ -27,6 +28,7 @@ import {
   sellGoldSilver 
 } from '../services/augmontApi';
 import { Modal } from 'react-native';
+import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
 
 export default function SellScreen() {
   const router = useRouter();
@@ -191,9 +193,50 @@ export default function SellScreen() {
       };
 
       console.log("FINAL SELL API PAYLOAD:", JSON.stringify(payload, null, 2));
-      await sellGoldSilver(payload, token);
+      const sellRes = await sellGoldSilver(payload, token);
+      console.log("AUGMONT SELL RESPONSE:", JSON.stringify(sellRes, null, 2));
+
+      const augmontTxId = sellRes?.result?.data?.transactionId || txId;
+
+      // Calculate final values
+      const finalAmount = mode === 'rupees' ? parseFloat(amount) : (parseFloat(amount) * rate);
+      const finalQuantity = mode === 'rupees' ? (parseFloat(amount) / rate) : parseFloat(amount);
+
+      // STEP 2: SAVE SELL RECEIPT TO MONGODB
+      const mongoPayload = {
+        orderType: "sell",
+        merchantTransactionId: augmontTxId,
+        augmontUniqueId: uniqueId,
+        userId: userProfile.mongoId || userProfile._id,
+        status: "completed",
+        metalType: isGold ? 'gold' : 'silver',
+        amount: parseFloat(finalAmount.toFixed(2)),
+        quantity: parseFloat(finalQuantity.toFixed(4)),
+        lockPrice: parseFloat(rate),
+        blockId: blockId,
+        metadata: {
+          paymentMethod: "BankTransfer",
+          platform: "mobile_app",
+          device: Platform.OS,
+          bankName: selectedBank.accountName || selectedBank.bankName || 'N/A',
+          bankAccountNumber: selectedBank.accountNumber || 'N/A',
+          ifscCode: selectedBank.ifscCode || 'N/A',
+          userBankId: selectedBank.userBankId
+        }
+      };
+
+      try {
+        const mongoRes = await fetch('http://13.63.202.142:5001/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(mongoPayload)
+        });
+        console.log("MongoDB Sell Receipt Saved!", await mongoRes.json());
+      } catch (dbErr) {
+        console.log("Alert: MongoDB sell receipt save failed.", dbErr);
+      }
       
-      setLastTxId(txId);
+      setLastTxId(augmontTxId);
       setSuccessModal(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -201,6 +244,7 @@ export default function SellScreen() {
     } finally {
       setIsSubmitting(false);
     }
+
   };
 
   return (
@@ -219,23 +263,23 @@ export default function SellScreen() {
           </View>
 
           {/* Asset Live Rate Card */}
-          <View style={[styles.rateCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#FFF9E5' }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(100)} style={[styles.rateCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#FFF9E5' }]}>
             <View style={styles.rateHeader}>
               <View style={[styles.dot, { backgroundColor: '#EF4444' }]} />
               <Text style={[styles.rateTag, { color: theme.textSecondary }]}>LIVE {isGold ? 'GOLD' : 'SILVER'} SELL RATE</Text>
             </View>
             {loading ? (
-              <ActivityIndicator color={theme.primary} />
+              <ShimmerPlaceholder width={160} height={36} borderRadius={10} isDarkMode={isDarkMode} />
             ) : (
               <Text style={[styles.rateValue, { color: theme.textPrimary }]}>₹{rate.toLocaleString('en-IN')}<Text style={styles.perGm}>/gm</Text></Text>
             )}
             <View style={[styles.vaultBadge, { backgroundColor: theme.itemBg }]}>
               <Text style={[styles.vaultText, { color: theme.textSecondary }]}>Available in Vault: <Text style={{fontWeight:'900', color: theme.textPrimary}}>{vaultBalance} gm</Text></Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Input Section */}
-          <View style={[styles.inputContainer, { backgroundColor: theme.card }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(200)} style={[styles.inputContainer, { backgroundColor: theme.card }]}>
             <View style={[styles.modeTabs, { backgroundColor: theme.background }]}>
               <TouchableOpacity 
                 style={[styles.modeBtn, mode === 'rupees' && { backgroundColor: theme.card }]} 
@@ -276,10 +320,10 @@ export default function SellScreen() {
                 {mode === 'rupees' ? `${calculatedValue} gm` : `₹${calculatedValue}`}
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Payout Bank Selection Section */}
-          <View style={[styles.inputContainer, { backgroundColor: theme.card, marginTop: 24 }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(300)} style={[styles.inputContainer, { backgroundColor: theme.card, marginTop: 24 }]}>
             <View style={styles.sectionHeader}>
               <Ionicons name="business-outline" size={20} color={theme.primary} />
               <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Payout Destination</Text>
@@ -313,10 +357,10 @@ export default function SellScreen() {
             <Text style={[styles.bankHint, { color: theme.textSecondary }]}>
               Funds will be transferred to this account within 24-48 business hours.
             </Text>
-          </View>
+          </Animated.View>
 
           {/* Summary Info Box */}
-          <View style={[styles.infoBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(400)} style={[styles.infoBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.infoRow}>
               <Ionicons name="card-outline" size={18} color={theme.textSecondary} />
               <Text style={[styles.infoText, { color: theme.textSecondary }]}>Secure payout via <Text style={{fontWeight:'800', color: theme.textPrimary}}>Augmont Trust</Text></Text>
@@ -325,7 +369,7 @@ export default function SellScreen() {
               <Ionicons name="shield-checkmark-outline" size={18} color={theme.textSecondary} />
               <Text style={[styles.infoText, { color: theme.textSecondary }]}>100% Tax Compliant Liquidation</Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Add Bank Modal */}
           <Modal visible={showAddBank} transparent animationType="slide" onRequestClose={() => setShowAddBank(false)}>

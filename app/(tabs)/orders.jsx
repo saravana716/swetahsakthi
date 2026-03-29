@@ -19,12 +19,14 @@ import {
   Modal,
   Dimensions
 } from 'react-native';
+import Animated, { FadeInRight, FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Toast from 'react-native-toast-message';
+import ShimmerPlaceholder from '../../components/ShimmerPlaceholder';
 
 const { width, height } = Dimensions.get('window');
 
@@ -151,15 +153,16 @@ export default function OrdersScreen() {
     return matchesFilter && matchesSearch;
   });
 
-  const renderOrderItem = ({ item }) => {
+  const renderOrderItem = ({ item, index }) => {
     const isFailed = item.status === 'failed';
     const isIncome = item.amount.startsWith('+');
     
     return (
-      <TouchableOpacity 
-        style={[styles.orderCard, { backgroundColor: theme.card }]}
-        onPress={() => handleOrderPress(item)}
-      >
+      <Animated.View entering={FadeInRight.duration(400).delay(index * 80)}>
+        <TouchableOpacity 
+          style={[styles.orderCard, { backgroundColor: theme.card }]}
+          onPress={() => handleOrderPress(item)}
+        >
         <View style={[
           styles.iconContainer, 
           isFailed ? { backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2' } : 
@@ -184,7 +187,8 @@ export default function OrdersScreen() {
           </Text>
           <Text style={[styles.weightText, { color: theme.textSecondary }]}>{item.weight}</Text>
         </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -243,10 +247,13 @@ export default function OrdersScreen() {
 
         {/* List */}
         {loading ? (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color={theme.primary} />
-            <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Syncing with Augmont...</Text>
-          </View>
+          <Animated.View entering={FadeIn.duration(400)} style={styles.loaderContainer}>
+            <View style={{ width: '100%', paddingHorizontal: 20, gap: 12 }}>
+              {[1,2,3,4,5].map(i => (
+                <ShimmerPlaceholder key={i} width={'100%'} height={80} borderRadius={24} isDarkMode={isDarkMode} />
+              ))}
+            </View>
+          </Animated.View>
         ) : (
           <FlatList
             data={filteredOrders}

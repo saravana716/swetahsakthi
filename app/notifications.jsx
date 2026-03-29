@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInRight, FadeIn, FadeOut, Layout } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './context/ThemeContext';
 
@@ -23,20 +24,22 @@ export default function NotificationsScreen() {
     setNotifications([]);
   };
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity style={[styles.notificationCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <View style={[styles.iconWrap, { backgroundColor: theme.itemBg }]}>
-        <Ionicons name={item.icon} size={22} color={item.color} />
-      </View>
-      <View style={styles.content}>
-        <View style={styles.row}>
-          <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={1}>{item.title}</Text>
-          {item.unread && <View style={styles.unreadDot} />}
+  const renderItem = ({ item, index }) => (
+    <Animated.View entering={FadeInRight.duration(400).delay(index * 100)} layout={Layout.springify()}>
+      <TouchableOpacity style={[styles.notificationCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={[styles.iconWrap, { backgroundColor: theme.itemBg }]}>
+          <Ionicons name={item.icon} size={22} color={item.color} />
         </View>
-        <Text style={[styles.message, { color: theme.textSecondary }]} numberOfLines={2}>{item.message}</Text>
-        <Text style={[styles.time, { color: theme.textSecondary }]}>{item.time}</Text>
-      </View>
-    </TouchableOpacity>
+        <View style={styles.content}>
+          <View style={styles.row}>
+            <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+            {item.unread && <View style={styles.unreadDot} />}
+          </View>
+          <Text style={[styles.message, { color: theme.textSecondary }]} numberOfLines={2}>{item.message}</Text>
+          <Text style={[styles.time, { color: theme.textSecondary }]}>{item.time}</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   return (

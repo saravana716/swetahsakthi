@@ -10,6 +10,7 @@ import {
   Platform,
   Share
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +20,8 @@ import { useAuth } from './context/AuthContext';
 import { getBuyInvoice, getSellInvoice } from '../services/augmontApi';
 import Toast from 'react-native-toast-message';
 import * as Haptics from 'expo-haptics';
+import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
+import AnimatedButton from '../components/AnimatedButton';
 
 const { width, height } = Dimensions.get('window');
 
@@ -82,8 +85,15 @@ const InvoiceScreen = () => {
   if (loading) {
     return (
       <View style={[styles.loaderContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Preparing Secure Document...</Text>
+        <Animated.View entering={FadeIn.duration(400)} style={{ alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Preparing Secure Document...</Text>
+          <View style={{ marginTop: 24, gap: 12, width: width - 80 }}>
+            <ShimmerPlaceholder width={'100%'} height={120} borderRadius={12} isDarkMode={isDarkMode} />
+            <ShimmerPlaceholder width={'100%'} height={40} borderRadius={8} isDarkMode={isDarkMode} />
+            <ShimmerPlaceholder width={'60%'} height={20} borderRadius={6} isDarkMode={isDarkMode} />
+          </View>
+        </Animated.View>
       </View>
     );
   }
@@ -110,7 +120,7 @@ const InvoiceScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={[styles.invoiceContent, { backgroundColor: '#FFFFFF', shadowColor: '#000' }]}>
+        <Animated.View entering={FadeInDown.duration(600).delay(100)} style={[styles.invoiceContent, { backgroundColor: '#FFFFFF', shadowColor: '#000' }]}>
           {/* Top Branding Row */}
           <View style={styles.brandingHeader}>
             <View>
@@ -221,28 +231,30 @@ const InvoiceScreen = () => {
               This is a computer-generated document and does not require a physical signature. Swarna Sakthi ensures all trades follow Marketplace compliance.
             </Text>
           </View>
-        </View>
+        </Animated.View>
 
-        <TouchableOpacity 
-          style={styles.actionBtn} 
-          onPress={handleDownload}
-          disabled={downloading}
-        >
-          <LinearGradient
-            colors={[theme.primary, '#92400E']}
-            style={styles.actionBtnGrad}
-            start={{x:0, y:0}} end={{x:1, y:1}}
+        <Animated.View entering={FadeInUp.duration(500).delay(300)}>
+          <AnimatedButton 
+            style={styles.actionBtn} 
+            onPress={handleDownload}
+            disabled={downloading}
           >
-            {downloading ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="download-outline" size={20} color="#FFF" style={{marginRight: 10}} />
-                <Text style={styles.actionBtnText}>DOWNLOAD OFFICIAL RECORD</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={[theme.primary, '#92400E']}
+              style={styles.actionBtnGrad}
+              start={{x:0, y:0}} end={{x:1, y:1}}
+            >
+              {downloading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="download-outline" size={20} color="#FFF" style={{marginRight: 10}} />
+                  <Text style={styles.actionBtnText}>DOWNLOAD OFFICIAL RECORD</Text>
+                </>
+              )}
+            </LinearGradient>
+          </AnimatedButton>
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );

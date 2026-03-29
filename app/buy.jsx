@@ -15,10 +15,13 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import { getLiveRates } from '../services/augmontApi';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
+import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
+import AnimatedButton from '../components/AnimatedButton';
 
 export default function BuyScreen() {
   const router = useRouter();
@@ -107,20 +110,20 @@ export default function BuyScreen() {
           </View>
 
           {/* Asset Live Rate Card */}
-          <View style={[styles.rateCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#FFF9E5' }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(100)} style={[styles.rateCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#FFF9E5' }]}>
             <View style={styles.rateHeader}>
               <View style={[styles.dot, { backgroundColor: theme.primary }]} />
               <Text style={[styles.rateTag, { color: theme.textSecondary }]}>LIVE {isGold ? 'GOLD' : 'SILVER'} RATE</Text>
             </View>
             {loading ? (
-              <ActivityIndicator color={theme.primary} />
+              <ShimmerPlaceholder width={160} height={36} borderRadius={10} isDarkMode={isDarkMode} />
             ) : (
               <Text style={[styles.rateValue, { color: theme.primary }]}>₹{rate.toLocaleString('en-IN')}<Text style={styles.perGm}>/gm</Text></Text>
             )}
-          </View>
+          </Animated.View>
 
           {/* Input Section */}
-          <View style={[styles.inputContainer, { backgroundColor: theme.card }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(200)} style={[styles.inputContainer, { backgroundColor: theme.card }]}>
             <View style={[styles.modeTabs, { backgroundColor: theme.background }]}>
               <TouchableOpacity 
                 style={[styles.modeBtn, mode === 'rupees' && { backgroundColor: theme.card, shadowColor: '#000' }]} 
@@ -157,31 +160,30 @@ export default function BuyScreen() {
                 {mode === 'rupees' ? `${calculatedValue} gm` : `₹${calculatedValue}`}
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Quick Amounts */}
           {mode === 'rupees' && (
-            <View style={styles.quickAmounts}>
+            <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.quickAmounts}>
               {['500', '1000', '2500', '5000'].map(val => (
-                <TouchableOpacity 
+                <AnimatedButton 
                   key={val} 
                   style={[styles.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
                   onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setAmount(val);
                   }}
                 >
                   <Text style={[styles.quickText, { color: theme.textPrimary }]}>+₹{val}</Text>
-                </TouchableOpacity>
+                </AnimatedButton>
               ))}
-            </View>
+            </Animated.View>
           )}
 
           {/* Benefit Banner */}
-          <View style={[styles.benefitCard, { backgroundColor: isDarkMode ? '#1E1B4B' : '#EEF2FF', borderColor: isDarkMode ? '#312E81' : '#E0E7FF' }]}>
+          <Animated.View entering={FadeInDown.duration(400).delay(400)} style={[styles.benefitCard, { backgroundColor: isDarkMode ? '#1E1B4B' : '#EEF2FF', borderColor: isDarkMode ? '#312E81' : '#E0E7FF' }]}>
             <Ionicons name="sparkles" size={20} color="#4F46E5" />
             <Text style={[styles.benefitText, { color: isDarkMode ? '#C7D2FE' : '#4338CA' }]}>Swarna Sakhi Benefit: <Text style={{fontWeight:'800'}}>+0.05% Extra Gold</Text></Text>
-          </View>
+          </Animated.View>
 
         </ScrollView>
         

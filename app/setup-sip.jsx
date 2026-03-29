@@ -15,8 +15,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './context/ThemeContext';
+import AnimatedButton from '../components/AnimatedButton';
 
 const { width } = Dimensions.get('window');
 
@@ -82,7 +84,7 @@ export default function SetupSIPScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
           {/* Promo Card — changes for gold/silver */}
-          <View style={[styles.promoCard, { backgroundColor: promoBg, borderColor: promoBorder }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(100)} style={[styles.promoCard, { backgroundColor: promoBg, borderColor: promoBorder }]}>
             <View style={[styles.promoIconBg, { backgroundColor: promoIconBg }]}>
               <Ionicons name="shield-checkmark-outline" size={26} color={primaryColor} />
             </View>
@@ -97,10 +99,10 @@ export default function SetupSIPScreen() {
                 </View>
               ))}
             </View>
-          </View>
+          </Animated.View>
 
           {/* Installment Amount */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(200)} style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>INSTALLMENT AMOUNT</Text>
 
             <View style={styles.amountRow}>
@@ -118,16 +120,16 @@ export default function SetupSIPScreen() {
             {/* Quick amounts */}
             <View style={styles.quickRow}>
               {QUICK_AMOUNTS.map((q) => (
-                <TouchableOpacity
+                <AnimatedButton
                   key={q}
                   style={[styles.quickBtn, {
                     backgroundColor: amount === String(q) ? primaryColor : (isDarkMode ? '#1E293B' : '#F8F9FA'),
                     borderColor: amount === String(q) ? primaryColor : theme.border,
                   }]}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAmount(String(q)); }}
+                  onPress={() => { setAmount(String(q)); }}
                 >
                   <Text style={[styles.quickBtnText, { color: amount === String(q) ? '#FFF' : theme.textSecondary }]}>₹{q}</Text>
-                </TouchableOpacity>
+                </AnimatedButton>
               ))}
             </View>
 
@@ -139,11 +141,13 @@ export default function SetupSIPScreen() {
               </View>
               <Text style={[styles.accValue, { color: '#22C55E' }]}>₹{yearlyAccumulation()}</Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Deduction Frequency */}
-          <Text style={[styles.freqLabel, { color: theme.textSecondary }]}>DEDUCTION FREQUENCY</Text>
-          <View style={styles.freqRow}>
+          <Animated.View entering={FadeInDown.duration(500).delay(300)}>
+            <Text style={[styles.freqLabel, { color: theme.textSecondary }]}>DEDUCTION FREQUENCY</Text>
+          </Animated.View>
+          <Animated.View entering={FadeInDown.duration(500).delay(350)} style={styles.freqRow}>
             {FREQUENCIES.map((f) => (
               <TouchableOpacity
                 key={f}
@@ -157,15 +161,15 @@ export default function SetupSIPScreen() {
                 <Text style={[styles.freqBtnText, { color: frequency === f ? primaryColor : theme.textSecondary }]}>{f}</Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </Animated.View>
 
           {/* Info */}
-          <View style={[styles.infoRow, { backgroundColor: isDarkMode ? '#1E293B' : '#EFF6FF', borderColor: isDarkMode ? '#334155' : '#DBEAFE' }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(400)} style={[styles.infoRow, { backgroundColor: isDarkMode ? '#1E293B' : '#EFF6FF', borderColor: isDarkMode ? '#334155' : '#DBEAFE' }]}>
             <Ionicons name="information-circle-outline" size={16} color="#3B82F6" />
             <Text style={[styles.infoText, { color: isDarkMode ? '#93C5FD' : '#1D4ED8' }]}>
               SIP can be paused or cancelled anytime. {metalName} is credited instantly after each deduction.
             </Text>
-          </View>
+          </Animated.View>
 
           <View style={{ height: 120 }} />
         </ScrollView>

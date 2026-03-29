@@ -14,8 +14,10 @@ import {
   Platform,
   Dimensions
 } from 'react-native';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useTheme } from './context/ThemeContext';
 import { getNews } from '../services/augmontApi';
+import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
 
 const { width } = Dimensions.get('window');
 
@@ -57,10 +59,13 @@ export default function NewsScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Fetching Latest Market News...</Text>
-      </View>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+        <Animated.View entering={FadeIn.duration(400)} style={{ padding: 20, gap: 20, marginTop: Platform.OS === 'android' ? 40 : 20 }}>
+          <ShimmerPlaceholder width={'60%'} height={28} borderRadius={8} isDarkMode={isDarkMode} />
+          <ShimmerPlaceholder width={'100%'} height={280} borderRadius={24} isDarkMode={isDarkMode} />
+          <ShimmerPlaceholder width={'100%'} height={280} borderRadius={24} isDarkMode={isDarkMode} />
+        </Animated.View>
+      </SafeAreaView>
     );
   }
 
@@ -83,30 +88,31 @@ export default function NewsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {newsList.map((item) => (
-          <TouchableOpacity 
-            key={item._id} 
-            style={[styles.newsCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F1F5F9' }]}
-            onPress={() => openNewsDetail(item)}
-            activeOpacity={0.9}
-          >
-            <Image source={{ uri: item.imageUrl || 'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=400' }} style={styles.newsImg} />
-            <View style={styles.newsCardBody}>
-              <View style={styles.metaRow}>
-                <View style={[styles.tag, { backgroundColor: theme.primary + '15' }]}>
-                  <Text style={[styles.tagText, { color: theme.primary }]}>Market News</Text>
+        {newsList.map((item, index) => (
+          <Animated.View key={item._id} entering={FadeInDown.duration(500).delay(index * 100)}>
+            <TouchableOpacity 
+              style={[styles.newsCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F1F5F9' }]}
+              onPress={() => openNewsDetail(item)}
+              activeOpacity={0.9}
+            >
+              <Image source={{ uri: item.imageUrl || 'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=400' }} style={styles.newsImg} />
+              <View style={styles.newsCardBody}>
+                <View style={styles.metaRow}>
+                  <View style={[styles.tag, { backgroundColor: theme.primary + '15' }]}>
+                    <Text style={[styles.tagText, { color: theme.primary }]}>Market News</Text>
+                  </View>
+                  <Text style={[styles.dateText, { color: theme.textSecondary }]}>{formatDate(item.publishedAt)}</Text>
                 </View>
-                <Text style={[styles.dateText, { color: theme.textSecondary }]}>{formatDate(item.publishedAt)}</Text>
+                <Text style={[styles.newsTitle, { color: theme.textPrimary }]} numberOfLines={2}>{item.title}</Text>
+                <Text style={[styles.newsSnippet, { color: theme.textSecondary }]} numberOfLines={3}>{item.content}</Text>
+                
+                <View style={styles.readMoreContainer}>
+                  <Text style={[styles.readMoreText, { color: theme.primary }]}>Full Story</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+                </View>
               </View>
-              <Text style={[styles.newsTitle, { color: theme.textPrimary }]} numberOfLines={2}>{item.title}</Text>
-              <Text style={[styles.newsSnippet, { color: theme.textSecondary }]} numberOfLines={3}>{item.content}</Text>
-              
-              <View style={styles.readMoreContainer}>
-                <Text style={[styles.readMoreText, { color: theme.primary }]}>Full Story</Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.primary} />
-              </View>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </Animated.View>
         ))}
 
         {newsList.length === 0 && (

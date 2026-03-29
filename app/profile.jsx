@@ -11,11 +11,13 @@ import {
   ActivityIndicator,
   Platform
 } from 'react-native';
+import Animated, { FadeInDown, FadeInRight, FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './context/ThemeContext';
 import { useAuth } from './context/AuthContext';
 import { getAugmontProfile, getUserByMongoId, getUserPassbook } from '../services/augmontApi';
 import { LinearGradient } from 'expo-linear-gradient';
+import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -69,8 +71,15 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading Secure Profile...</Text>
+        <Animated.View entering={FadeIn.duration(400)} style={{ width: '100%', paddingHorizontal: 20, gap: 16 }}>
+          <ShimmerPlaceholder width={'100%'} height={200} borderRadius={30} isDarkMode={isDarkMode} />
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <ShimmerPlaceholder width={'48%'} height={70} borderRadius={20} isDarkMode={isDarkMode} />
+            <ShimmerPlaceholder width={'48%'} height={70} borderRadius={20} isDarkMode={isDarkMode} />
+          </View>
+          <ShimmerPlaceholder width={'100%'} height={180} borderRadius={24} isDarkMode={isDarkMode} />
+          <ShimmerPlaceholder width={'100%'} height={180} borderRadius={24} isDarkMode={isDarkMode} />
+        </Animated.View>
       </View>
     );
   }
@@ -115,7 +124,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* User Hero section */}
-        <View style={[styles.heroCard, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.duration(600).delay(100)} style={[styles.heroCard, { backgroundColor: theme.card }]}>
            <LinearGradient
             colors={isDarkMode ? ['#451a03', '#1e1b4b'] : ['#FFF9E5', '#F5F3FF']}
             style={styles.heroGrad}
@@ -134,10 +143,10 @@ export default function ProfileScreen() {
                <Text style={styles.kycText}>{augmontData?.kycStatus || 'Pending'}</Text>
             </View>
           </LinearGradient>
-        </View>
+        </Animated.View>
 
         {/* Balance Row */}
-        <View style={styles.balanceRow}>
+        <Animated.View entering={FadeInDown.duration(500).delay(200)} style={styles.balanceRow}>
           <View style={[styles.balanceBox, { backgroundColor: theme.card }]}>
             <Text style={[styles.balanceLabel, { color: theme.textSecondary }]}>Gold Balance</Text>
             <Text style={[styles.balanceValue, { color: theme.primary }]}>
@@ -150,7 +159,7 @@ export default function ProfileScreen() {
               {parseFloat(passbookData?.silverGrms || 0).toFixed(4)}g
             </Text>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Identity & Personal Info */}
         <Section title="Identity Details" icon="person-outline">

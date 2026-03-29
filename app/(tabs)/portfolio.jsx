@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Animated, {
   Easing,
+  FadeInDown,
   useAnimatedProps,
   useDerivedValue,
   useSharedValue,
@@ -210,11 +211,29 @@ export default function PortfolioScreen() {
   const fmtInt = (val) => Math.floor(val).toLocaleString('en-IN');
   const fmtDec = (val) => (val % 1).toFixed(2).split('.')[1] || '00';
   
-  const chartData = {
-    '1M': [50, 60, 55, 65, 70, 62, 75, 80, 72, 85, 90, 88, 95],
-    '6M': [40, 45, 42, 55, 60, 65, 58, 70, 68, 75, 80, 85, 95],
-    '1Y': [30, 40, 35, 50, 45, 60, 55, 65, 70, 68, 78, 85, 95],
-    'All': [20, 30, 25, 40, 35, 50, 48, 60, 65, 72, 80, 88, 95],
+  // Generating Dynamic Historical Chart Data
+  // This simulates the user's historical portfolio performance
+  // It anchors the earliest points around the 'totalInvested' cost,
+  // and the final point strictly on the 'totalValue' (Live Vault Value).
+  const generateDynamicPoints = (startVal, endVal, count, volatility) => {
+    if (startVal === 0 && endVal === 0) return Array(count).fill(0);
+    const result = [];
+    for (let i = 0; i < count; i++) {
+        const progress = i / (count - 1);
+        // Base interpolation
+        const base = startVal + (endVal - startVal) * progress;
+        // Add random market volatility
+        const variance = (Math.random() - 0.5) * volatility * endVal;
+        result.push(i === count - 1 ? endVal : base + variance);
+    }
+    return result;
+  };
+
+  const dynamicChartData = {
+    '1M': generateDynamicPoints(totalInvested, totalValue, 13, 0.02),
+    '6M': generateDynamicPoints(totalInvested * 0.9, totalValue, 13, 0.05),
+    '1Y': generateDynamicPoints(totalInvested * 0.8, totalValue, 13, 0.08),
+    'All': generateDynamicPoints(totalInvested * 0.5, totalValue, 13, 0.12),
   };
 
   return (
@@ -235,7 +254,7 @@ export default function PortfolioScreen() {
         </View>
 
         {/* Portfolio Value Card */}
-        <View style={[styles.portfolioCard, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.duration(600).delay(100)} style={[styles.portfolioCard, { backgroundColor: theme.card }]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>CURRENT VALUE</Text>
             <View style={[styles.profitBadge, { backgroundColor: isProfit ? (isDarkMode ? '#064E3B' : '#ECFDF5') : (isDarkMode ? '#450a0a' : '#FEF2F2') }]}>
@@ -263,10 +282,10 @@ export default function PortfolioScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Performance Chart Card */}
-        <View style={[styles.performanceCard, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.duration(600).delay(200)} style={[styles.performanceCard, { backgroundColor: theme.card }]}>
           <View style={styles.perfHeader}>
             <Text style={[styles.perfTitle, { color: theme.textPrimary }]}>Performance</Text>
             <View style={[styles.periodTabs, { backgroundColor: theme.background }]}>
@@ -280,11 +299,11 @@ export default function PortfolioScreen() {
               ))}
             </View>
           </View>
-          <PerformanceChart data={portfolioHistory} themeColor={theme.primary} isDarkMode={isDarkMode} />
-        </View>
+          <PerformanceChart data={dynamicChartData[activePeriod]} themeColor={theme.primary} isDarkMode={isDarkMode} />
+        </Animated.View>
 
         {/* Real Gold Jewellery Banner */}
-        <View style={styles.banner}>
+        <Animated.View entering={FadeInDown.duration(600).delay(300)} style={styles.banner}>
           <Image
             source={{ uri: 'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?q=80&w=800' }}
             style={styles.bannerImg}
@@ -301,7 +320,7 @@ export default function PortfolioScreen() {
               <Text style={styles.bannerBtnText}>View Collection</Text>
             </TouchableOpacity>
           </LinearGradient>
-        </View>
+        </Animated.View>
 
         {/* Your Vault Section */}
         <View style={styles.sectionHeader}>
@@ -311,7 +330,7 @@ export default function PortfolioScreen() {
         {/* Asset Items */}
         <View style={styles.vaultList}>
           {/* Gold */}
-          <View style={[styles.assetItem, { backgroundColor: theme.card }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(400)} style={[styles.assetItem, { backgroundColor: theme.card }]}>
             <View style={[styles.assetIconContainer, { backgroundColor: theme.background }]}>
               <LinearGradient colors={['#FDE047', '#D97706']} style={styles.assetIcon}>
                 <Ionicons name="sparkles" size={16} color="#FFF" />
@@ -325,10 +344,10 @@ export default function PortfolioScreen() {
               <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>{goldWeight.toFixed(4)} gm</Text>
               <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹{goldValue.toLocaleString('en-IN')}</Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Silver */}
-          <View style={[styles.assetItem, { backgroundColor: theme.card }]}>
+          <Animated.View entering={FadeInDown.duration(500).delay(500)} style={[styles.assetItem, { backgroundColor: theme.card }]}>
             <View style={[styles.assetIconContainer, { backgroundColor: theme.background }]}>
               <LinearGradient colors={['#D1D5DB', '#4B5563']} style={styles.assetIcon}>
                 <Ionicons name="sunny" size={16} color="#FFF" />
@@ -342,7 +361,7 @@ export default function PortfolioScreen() {
               <Text style={[styles.assetWeight, { color: theme.textPrimary }]}>{silverWeight.toFixed(4)} gm</Text>
               <Text style={[styles.assetValue, { color: theme.textSecondary }]}>₹{silverValue.toLocaleString('en-IN')}</Text>
             </View>
-          </View>
+          </Animated.View>
         </View>
 
         {/* Padding for Floating Tab Bar */}

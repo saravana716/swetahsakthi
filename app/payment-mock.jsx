@@ -12,6 +12,7 @@ import {
   Platform,
   Image
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp, FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './context/ThemeContext';
 import { useAuth } from './context/AuthContext';
@@ -149,14 +150,14 @@ export default function PaymentMockScreen() {
       </View>
 
       <View style={styles.content}>
-        <View style={[styles.amountCard, { backgroundColor: theme.card }]}>
+        <Animated.View entering={FadeInDown.duration(500).delay(100)} style={[styles.amountCard, { backgroundColor: theme.card }]}>
           <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>TOTAL AMOUNT PAYABLE</Text>
           <Text style={[styles.amountValue, { color: theme.textPrimary }]}>₹{parseFloat(finalRsAmount).toLocaleString('en-IN')}</Text>
           <View style={styles.detailRow}>
             <Text style={[styles.detailText, { color: theme.textSecondary }]}>{metalType.toUpperCase()} QUANTITY</Text>
             <Text style={[styles.detailValue, { color: theme.textPrimary }]}>{parseFloat(finalGmQuantity).toFixed(4)}g</Text>
           </View>
-        </View>
+        </Animated.View>
 
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SECURE PAYMENT GATEWAY (MOCK)</Text>
         
@@ -178,10 +179,10 @@ export default function PaymentMockScreen() {
 
         <View style={styles.spacer} />
 
-        <View style={[styles.secureBanner, { backgroundColor: isDarkMode ? '#1E293B' : '#F1F5F9' }]}>
+        <Animated.View entering={FadeInUp.duration(400).delay(400)} style={[styles.secureBanner, { backgroundColor: isDarkMode ? '#1E293B' : '#F1F5F9' }]}>
           <Ionicons name="shield-checkmark" size={16} color="#10B981" />
           <Text style={[styles.secureText, { color: theme.textSecondary }]}>SSL Encrypted Secure Transaction</Text>
-        </View>
+        </Animated.View>
       </View>
 
       <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
