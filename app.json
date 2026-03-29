@@ -50,6 +50,13 @@
             "usesCleartextTraffic": true
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app requires access to photos to upload KYC documents.",
+          "cameraPermission": "The app requires camera access to capture KYC documents."
+        }
       ]
     ],
     "experiments": {

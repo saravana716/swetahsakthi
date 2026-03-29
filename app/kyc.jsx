@@ -88,7 +88,15 @@ const VerifiedSuccessView = ({ theme, isDarkMode, router, userProfile }) => (
           <View style={{ flex: 1, marginLeft: 16 }}>
             <Text style={[styles.verifiedLabel, { color: theme.textSecondary }]}>Verified On</Text>
             <Text style={[styles.verifiedValue, { color: theme.textPrimary }]}>
-              {new Date(userProfile?.updatedAt || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+              {(() => {
+                try {
+                  const dateVal = userProfile?.updatedAt;
+                  const finalDate = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal || Date.now());
+                  return finalDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+                } catch (e) {
+                  return 'Recently Verified';
+                }
+              })()}
             </Text>
           </View>
         </View>
