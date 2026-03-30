@@ -499,8 +499,9 @@ export default function DashboardScreen() {
 
         {/* News Carousel */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsCarouselScroll}>
-          {newsList.slice(0, 3).map((news) => (
+          {newsList.slice(0, 3).map((news, index) => (
               <TouchableOpacity 
+                key={news._id || `news-${index}`}
                 style={[styles.newsCard, { backgroundColor: theme.card, borderColor: isDarkMode ? 'transparent' : '#F8F9FA' }]}
                 onPress={() => {
                   setSelectedNews(news);

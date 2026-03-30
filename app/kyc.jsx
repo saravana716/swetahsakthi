@@ -8,6 +8,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Platform,
   SafeAreaView,
@@ -20,6 +21,7 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { getAugmontKYCStatus, submitAugmontKYC, updateUserKycStatus } from '../services/augmontApi';
+import { validateAge } from '../services/kycVerification';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 
@@ -130,11 +132,18 @@ export default function KYCScreen() {
   const [nameAsPerPan, setNameAsPerPan] = useState(userProfile?.displayName || '');
   const [dateOfBirth, setDateOfBirth] = useState(userProfile?.dateOfBirth || '');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isAgeValid, setIsAgeValid] = useState(true);
+  
+  // Real-time Validation States
+  const [isPanValid, setIsPanValid] = useState(false);
+  const [isAadharValid, setIsAadharValid] = useState(false);
+  const [isFormValid, setIsFormValid] = useState(false);
   
   // New Image States
   const [panImage, setPanImage] = useState(null);
   const [aadharNumber, setAadharNumber] = useState('');
   const [aadharImage, setAadharImage] = useState(null);
+  const [loadingStatus, setLoadingStatus] = useState('Processing...');
 
   // 1. Initial Status Sync
   useEffect(() => {
@@ -152,6 +161,7 @@ export default function KYCScreen() {
         
         if (uniqueId) {
           const statusData = await getAugmontKYCStatus(uniqueId, token);
+          console.log("KYC Status Response:", JSON.stringify(statusData, null, 2));
           const liveData = statusData?.result?.data;
           if (liveData?.status) {
             setLocalStatus(liveData.status);
@@ -167,19 +177,6 @@ export default function KYCScreen() {
     syncStatus();
   }, [userProfile]);
 
-  if (isCheckingStatus) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.loadingText, { color: theme.textSecondary, marginTop: 12 }]}>Verifying Status...</Text>
-      </View>
-    );
-  }
-
-  if (localStatus === 'approved') {
-    return <VerifiedSuccessView theme={theme} isDarkMode={isDarkMode} router={router} userProfile={userProfile} />;
-  }
-
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStarted(true);
@@ -192,8 +189,12 @@ export default function KYCScreen() {
     if (currentStep < STEPS.length) {
       // Basic validation for step 1
       if (currentStep === 1) {
-        if (!panNumber || panNumber.length < 10) {
+        if (!isPanValid) {
           Toast.show({ type: 'error', text1: 'Invalid PAN Number' });
+          return;
+        }
+        if (!isAgeValid) {
+          Toast.show({ type: 'error', text1: 'Min age required is 18 years' });
           return;
         }
         if (!panImage) {
@@ -203,7 +204,7 @@ export default function KYCScreen() {
       }
       // Step 2 Aadhar validation
       if (currentStep === 2) {
-        if (!aadharNumber || aadharNumber.length < 12) {
+        if (!isAadharValid) {
           Toast.show({ type: 'error', text1: 'Invalid Aadhar Number' });
           return;
         }
@@ -216,20 +217,30 @@ export default function KYCScreen() {
     } else {
       // Step 3: Final Submission
       setLoading(true);
+      setLoadingStatus("Verifying Identity...");
+      
       try {
+        // Multi-stage fake loader for premium feel
+        setTimeout(() => setLoadingStatus("Analyzing Documents..."), 1000);
+        setTimeout(() => setLoadingStatus("Checking Secure Vaults..."), 2000);
+        setTimeout(() => setLoadingStatus("Finalizing Profile..."), 3000);
+
         const token = await user.getIdToken();
         const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
         
         if (!uniqueId) throw new Error("Augmont ID not found. Please complete profile first.");
 
         // 1. Submit to Augmont with Images
-        await submitAugmontKYC(uniqueId, {
+        const verificationResponse = await submitAugmontKYC(uniqueId, {
           panNumber,
           dateOfBirth,
           nameAsPerPan,
+          aadharNumber: aadharNumber.replace(/\s/g, ''), // Strip spaces: "9635 9635 9635" → "963596359635"
           panImage,
           aadharImage
         }, token);
+        
+        console.log("KYC Verification Response:", JSON.stringify(verificationResponse, null, 2));
 
         // 2. Sync with MongoDB
         await updateUserKycStatus(userProfile.mongoId || userProfile._id, 'approved', token);
@@ -249,23 +260,84 @@ export default function KYCScreen() {
   const onDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
-      setDateOfBirth(selectedDate.toISOString().split('T')[0]);
+      const dobString = selectedDate.toISOString().split('T')[0];
+      setDateOfBirth(dobString);
+      setIsAgeValid(validateAge(dobString));
     }
   };
 
-  const takePhoto = async (type) => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Toast.show({ type: 'error', text1: 'Camera permission denied' });
-        return;
-      }
+  const formatPAN = (text) => {
+    const uppercased = text.toUpperCase();
+    setPanNumber(uppercased);
+    const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+    setIsPanValid(panRegex.test(uppercased));
+  };
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7,
-      });
+  const formatAadhar = (text) => {
+    // Remove non-numeric
+    const numeric = text.replace(/[^0-9]/g, '');
+    const truncated = numeric.slice(0, 12);
+    
+    // Add spaces for display: XXXX XXXX XXXX
+    let formatted = truncated;
+    if (truncated.length > 4) formatted = truncated.slice(0, 4) + ' ' + truncated.slice(4);
+    if (truncated.length > 8) formatted = formatted.slice(0, 9) + ' ' + truncated.slice(8);
+    
+    setAadharNumber(formatted);
+    setIsAadharValid(truncated.length === 12);
+  };
+
+  // Determine if "Continue" button should be enabled
+  useEffect(() => {
+    if (currentStep === 1) {
+      setIsFormValid(isPanValid && isAgeValid && !!panImage && !!nameAsPerPan);
+    } else if (currentStep === 2) {
+      setIsFormValid(isAadharValid && !!aadharImage);
+    } else {
+      setIsFormValid(true);
+    }
+  }, [currentStep, isPanValid, isAgeValid, panImage, nameAsPerPan, isAadharValid, aadharImage]);
+
+  // === Early Returns (MUST be placed AFTER all hooks) ===
+  if (isCheckingStatus) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={[styles.loadingText, { color: theme.textSecondary, marginTop: 12 }]}>Verifying Status...</Text>
+      </View>
+    );
+  }
+
+  if (localStatus === 'approved') {
+    return <VerifiedSuccessView theme={theme} isDarkMode={isDarkMode} router={router} userProfile={userProfile} />;
+  }
+
+  const handleImageSelection = async (type, source) => {
+    try {
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Toast.show({ type: 'error', text1: 'Camera permission denied' });
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.2, // Significantly reduced quality to prevent 413 Entity Too Large error
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Toast.show({ type: 'error', text1: 'Gallery permission denied' });
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.2, // Significantly reduced quality to prevent 413 Entity Too Large error
+        });
+      }
 
       if (!result.canceled) {
         if (type === 'pan') setPanImage(result.assets[0].uri);
@@ -273,9 +345,21 @@ export default function KYCScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     } catch (error) {
-      console.error("Camera Error:", error);
-      Toast.show({ type: 'error', text1: 'Failed to open camera' });
+      console.error("Image Selection Error:", error);
+      Toast.show({ type: 'error', text1: 'Failed to select image' });
     }
+  };
+
+  const takePhoto = (type) => {
+    Alert.alert(
+      "Upload Image",
+      "Choose an option",
+      [
+        { text: "Camera", onPress: () => handleImageSelection(type, 'camera') },
+        { text: "Gallery", onPress: () => handleImageSelection(type, 'gallery') },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
   };
 
   if (!started) {
@@ -397,28 +481,58 @@ export default function KYCScreen() {
             </View>
 
             <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>PAN Number</Text>
-            <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 16 }]}>
+            <View style={[styles.inputBox, { 
+              backgroundColor: theme.card, 
+              borderColor: panNumber.length === 10 ? (isPanValid ? '#22C55E' : '#EF4444') : theme.border, 
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center'
+            }]}>
               <TextInput
-                style={[styles.inputField, { color: theme.textPrimary }]}
+                style={[styles.inputField, { color: theme.textPrimary, flex: 1 }]}
                 placeholder="ABCDE1234F"
                 placeholderTextColor={theme.textSecondary}
                 autoCapitalize="characters"
                 maxLength={10}
                 value={panNumber}
-                onChangeText={setPanNumber}
+                onChangeText={formatPAN}
               />
+              {panNumber.length === 10 && (
+                <Ionicons 
+                  name={isPanValid ? "checkmark-circle" : "close-circle"} 
+                  size={20} 
+                  color={isPanValid ? "#22C55E" : "#EF4444"} 
+                />
+              )}
             </View>
 
             <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Date of Birth</Text>
             <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-              <View pointerEvents="none" style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <View pointerEvents="none" style={[styles.inputBox, { 
+                backgroundColor: theme.card, 
+                borderColor: dateOfBirth ? (isAgeValid ? '#22C55E' : '#EF4444') : theme.border,
+                flexDirection: 'row',
+                alignItems: 'center'
+              }]}>
                 <TextInput
-                  style={[styles.inputField, { color: theme.textPrimary }]}
+                  style={[styles.inputField, { color: theme.textPrimary, flex: 1 }]}
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={theme.textSecondary}
                   value={dateOfBirth}
                 />
+                {dateOfBirth && (
+                  <Ionicons 
+                    name={isAgeValid ? "checkmark-circle" : "close-circle"} 
+                    size={20} 
+                    color={isAgeValid ? "#22C55E" : "#EF4444"} 
+                  />
+                )}
               </View>
+              {!isAgeValid && dateOfBirth && (
+                <Text style={{ color: '#EF4444', fontSize: 11, marginTop: 4, fontWeight: '600' }}>
+                  You must be at least 18 years old to proceed.
+                </Text>
+              )}
             </TouchableOpacity>
 
             {showDatePicker && (
@@ -454,16 +568,29 @@ export default function KYCScreen() {
         {currentStep === 2 && (
           <View style={styles.formGroup}>
             <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Aadhar Number</Text>
-            <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 16 }]}>
+            <View style={[styles.inputBox, { 
+              backgroundColor: theme.card, 
+              borderColor: aadharNumber.length === 14 ? (isAadharValid ? '#22C55E' : '#EF4444') : theme.border, 
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center'
+            }]}>
               <TextInput
-                style={[styles.inputField, { color: theme.textPrimary }]}
+                style={[styles.inputField, { color: theme.textPrimary, flex: 1 }]}
                 placeholder="XXXX XXXX XXXX"
                 placeholderTextColor={theme.textSecondary}
                 keyboardType="numeric"
                 maxLength={14}
                 value={aadharNumber}
-                onChangeText={setAadharNumber}
+                onChangeText={formatAadhar}
               />
+              {aadharNumber.length === 14 && (
+                <Ionicons 
+                  name={isAadharValid ? "checkmark-circle" : "close-circle"} 
+                  size={20} 
+                  color={isAadharValid ? "#22C55E" : "#EF4444"} 
+                />
+              )}
             </View>
             
             <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Take Aadhar Photo</Text>
@@ -508,14 +635,21 @@ export default function KYCScreen() {
 
       {/* Footer */}
       <View style={[styles.footer, { backgroundColor: theme.background, borderTopColor: theme.border }]}>
-        <TouchableOpacity style={[styles.continueBtn, loading && { opacity: 0.7 }]} onPress={handleContinue} disabled={loading}>
+        <TouchableOpacity 
+          style={[styles.continueBtn, (loading || !isFormValid) && { opacity: 0.5 }]} 
+          onPress={handleContinue} 
+          disabled={loading || !isFormValid}
+        >
           <LinearGradient
             colors={currentStep === STEPS.length ? ['#22C55E', '#15803D'] : ['#EAB308', '#D97706']}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
             style={styles.continueBtnGrad}
           >
             {loading ? (
-              <ActivityIndicator color="#FFF" />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ActivityIndicator color="#FFF" style={{ marginRight: 10 }} />
+                <Text style={styles.continueBtnText}>{loadingStatus}</Text>
+              </View>
             ) : (
               <Text style={styles.continueBtnText}>
                 {currentStep === STEPS.length ? 'Submit Verification' : 'Continue'}

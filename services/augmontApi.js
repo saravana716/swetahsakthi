@@ -145,6 +145,7 @@ export const submitAugmontKYC = async (uniqueId, kycData, token) => {
     formData.append('panNumber', kycData.panNumber);
     formData.append('dateOfBirth', kycData.dateOfBirth); // Expects YYYY-MM-DD
     formData.append('nameAsPerPan', kycData.nameAsPerPan);
+    formData.append('aadharNumber', kycData.aadharNumber);
     formData.append('status', 'approved'); // As requested for default approval
     
     // Attachments: Real File Objects from Camera Capture

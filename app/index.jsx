@@ -1,11 +1,20 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLanguage } from './context/LanguageContext';
 import { useAuth } from './context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
+
+// Status messages that rotate below the progress bar
+const STATUS_STEPS = [
+  { text: 'Securing Connection...', delay: 0 },
+  { text: 'Loading Market Data...', delay: 800 },
+  { text: 'Syncing Your Vault...', delay: 1600 },
+  { text: 'Verifying Account...', delay: 2400 },
+  { text: 'Almost Ready...', delay: 3200 },
+];
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -14,6 +23,8 @@ export default function SplashScreen() {
   
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const textFadeAnim = useRef(new Animated.Value(1)).current;
+  const [currentStep, setCurrentStep] = useState(0);
   
   // Animated values for the three bars
   const bar1Scale = useRef(new Animated.Value(1)).current;
@@ -60,11 +71,32 @@ export default function SplashScreen() {
       easing: Easing.out(Easing.ease),
       useNativeDriver: false,
     }).start(() => {
-      // Just mark it as finished. 
-      // The _layout.jsx global guard will automatically route the user based on their true Auth state.
       markSplashFinished();
     });
-  }, []); // Empty dependency array ensures the splash animation never restarts mid-way
+
+    // Rotate status text messages with fade animation
+    const timers = STATUS_STEPS.map((step, index) => {
+      if (index === 0) return null; // First step is already set
+      return setTimeout(() => {
+        // Fade out current text
+        Animated.timing(textFadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start(() => {
+          setCurrentStep(index);
+          // Fade in new text
+          Animated.timing(textFadeAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        });
+      }, step.delay);
+    });
+
+    return () => timers.forEach(t => t && clearTimeout(t));
+  }, []);
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -73,7 +105,6 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Exact Background Glow from Image 12:15 (Top-left) */}
       <LinearGradient
         colors={['#2D1B08', '#000000']}
         style={StyleSheet.absoluteFill}
@@ -103,7 +134,11 @@ export default function SplashScreen() {
           <View style={styles.progressBarBackground}>
             <Animated.View style={[styles.progressBarFill, { width: progressWidth }]} />
           </View>
-          <Text style={styles.loadingText}>Securing Connection...</Text>
+          
+          {/* Dynamic Status Text with fade animation */}
+          <Animated.Text style={[styles.loadingText, { opacity: textFadeAnim }]}>
+            {STATUS_STEPS[currentStep]?.text}
+          </Animated.Text>
         </View>
       </Animated.View>
     </View>
@@ -214,4 +249,3 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
-
