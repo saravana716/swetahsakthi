@@ -16,6 +16,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
@@ -48,6 +49,7 @@ const CustomInput = ({ icon, theme, value, onChangeText, placeholder, keyboardTy
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { theme, isDarkMode } = useTheme();
   const { user, updateProfile } = useAuth();
   
@@ -501,7 +503,7 @@ export default function ProfileSetupScreen() {
           </View>
         </Modal>
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 60) }]}>
           <TouchableOpacity 
             activeOpacity={0.8}
             style={[styles.primaryButton, { backgroundColor: theme.primary }]}
@@ -626,8 +628,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   footer: {
-    padding: 24,
-    paddingBottom: Platform.OS === 'android' ? 32 : 40,
+    paddingHorizontal: 32,
+    paddingTop: 16,
     alignItems: 'center',
   },
   primaryButton: {

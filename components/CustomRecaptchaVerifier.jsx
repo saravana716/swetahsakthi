@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useState, useRef } from 'react';
-import { Modal, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Modal, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, useWindowDimensions, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -8,8 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
  * This replaces the broken 'expo-firebase-recaptcha' package.
  */
 const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire, onError }, ref) => {
+  const { width, height: screenHeight } = useWindowDimensions();
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState(null);
   const resolveRef = useRef(null);
   const webViewRef = useRef(null);
@@ -92,16 +94,14 @@ const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'ready') {
         setLoading(false);
+        setIsDone(false);
         console.log("CustomRecaptcha: WebView Ready");
       } else if (data.type === 'verified') {
-        setVisible(false);
-        console.log("CustomRecaptcha: Verified! Token received:", data.token.substring(0, 10) + "...");
-        if (onVerify) onVerify(data.token);
-        if (resolveRef.current) {
-          resolveRef.current(data.token);
-          resolveRef.current = null;
-        }
+        setIsDone(true);
+        // We now wait for the user to tap the "Verify" button
+        resolveRef.current?.(data.token); 
       } else if (data.type === 'expired') {
+        setIsDone(false);
         if (onExpire) onExpire();
       } else if (data.type === 'error') {
         setLoading(false);
@@ -121,13 +121,21 @@ const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire
     }
   };
 
+  const onConfirmVerification = () => {
+    setVisible(false);
+    if (onVerify && isDone) {
+      // The token was already stored in resolveRef if verified
+      // and handled in the parent. We trigger the screen close.
+    }
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <View style={[styles.container, { height: screenHeight * 0.85 }]}>
           <View style={styles.header}>
             <Text style={styles.title}>Security Verification</Text>
-            <TouchableOpacity onPress={() => setVisible(false)}>
+            <TouchableOpacity onPress={() => setVisible(false)} style={styles.closeBox}>
               <Ionicons name="close" size={24} color="#000" />
             </TouchableOpacity>
           </View>
@@ -159,6 +167,23 @@ const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire
               style={{ flex: 1, backgroundColor: 'transparent' }}
             />
           </View>
+
+          {/* Sticky Footer for Verification */}
+          <View style={styles.footer}>
+            <Text style={styles.instructionText}>
+              {isDone ? "Verification complete!" : "Select all required images and tap Verify"}
+            </Text>
+            <TouchableOpacity 
+              activeOpacity={0.8}
+              style={[styles.verifyButton, { backgroundColor: isDone ? '#D4AF37' : '#E5E7EB' }]}
+              onPress={onConfirmVerification}
+              disabled={!isDone}
+            >
+              <Text style={[styles.verifyButtonText, { color: isDone ? '#FFF' : '#9CA3AF' }]}>
+                {isDone ? "PROCEED" : "VERIFY"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -168,17 +193,16 @@ const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
   },
   container: {
     width: '100%',
-    height: 450,
     backgroundColor: '#FFF',
-    borderRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     overflow: 'hidden',
+    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
   },
   header: {
     flexDirection: 'row',
@@ -240,6 +264,43 @@ const styles = StyleSheet.create({
   retryText: {
     color: '#FFF',
     fontWeight: '700',
+  },
+  footer: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+  },
+  instructionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  verifyButton: {
+    width: '100%',
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#D4AF37',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  verifyButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  closeBox: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

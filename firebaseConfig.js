@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Your web app's Firebase configuration
@@ -21,6 +22,12 @@ const app = initializeApp(firebaseConfig);
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage)
 });
-export const db = getFirestore(app);
+
+// UPGRADED: Explicit persistence for Firestore to handle offline alerts & data
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({}) 
+});
+
+export const storage = getStorage(app);
 
 export default app;

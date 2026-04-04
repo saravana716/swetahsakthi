@@ -1,6 +1,22 @@
 import { createContext, useContext, useState } from 'react';
 
-const ThemeContext = createContext();
+const ThemeContext = createContext({
+  isGold: true,
+  setIsGold: () => {},
+  isDarkMode: false,
+  toggleDarkMode: () => {},
+  themeColor: '#EAB308',
+  theme: {
+    background: '#FAFAF4',
+    card: '#FFFFFF',
+    textPrimary: '#1A1A1A',
+    textSecondary: '#9CA3AF',
+    border: '#F3F4F6',
+    itemBg: '#FFFBF0',
+    primary: '#EAB308',
+    isDarkMode: false,
+  }
+});
 
 export const ThemeProvider = ({ children }) => {
   const [isGold, setIsGold] = useState(true);

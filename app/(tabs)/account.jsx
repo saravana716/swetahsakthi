@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Switch } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Switch, Image, Alert, ActivityIndicator, Modal } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
@@ -8,16 +8,24 @@ import { useAuth } from '../context/AuthContext';
 import { getAugmontKYCStatus, getAugmontProfile, getUserPassbook, getAugmontBuyList } from '../../services/augmontApi';
 import { useState, useEffect } from 'react';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import Toast from 'react-native-toast-message';
+import { storage } from '../../firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export default function AccountScreen() {
   const router = useRouter();
   const { theme, isDarkMode, toggleDarkMode } = useTheme();
-  const { user, userProfile, logout } = useAuth();
+  const { user, userProfile, logout, updateProfile } = useAuth();
   const [kycStatus, setKycStatus] = useState(userProfile?.kycStatus || 'pending');
   const [passbookData, setPassbookData] = useState(null);
   const [buyList, setBuyList] = useState([]);
   const [tenure, setTenure] = useState('0M');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [localPhotoUri, setLocalPhotoUri] = useState(null);
+  const [showPickerModal, setShowPickerModal] = useState(false);
+
+  const displayPhotoUrl = localPhotoUri || userProfile?.photoURL;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -58,6 +66,116 @@ export default function AccountScreen() {
     };
     fetchData();
   }, [userProfile]);
+
+  const handlePhotoUpload = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowPickerModal(true);
+  };
+
+  const pickFromSource = async (source) => {
+    setShowPickerModal(false);
+    await new Promise(r => setTimeout(r, 300)); // Let modal close first
+
+    let result;
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Please allow camera access in Settings.');
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,
+      });
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Please allow gallery access in Settings.');
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,
+      });
+    }
+
+    if (result.canceled) {
+      console.log("[PHOTO_DEBUG] Picker Cancelled.");
+      return;
+    }
+    
+    const uri = result.assets[0].uri;
+    console.log("[PHOTO_DEBUG] Step 1: Image picked. URI:", uri);
+    
+    setPhotoUploading(true);
+    setLocalPhotoUri(uri);
+
+    try {
+      console.log("[PHOTO_DEBUG] Step 2: Starting XHR Blob conversion...");
+      const blob = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = function () { 
+          console.log("[PHOTO_DEBUG] Step 3: Blob created successfully.");
+          resolve(xhr.response); 
+        };
+        xhr.onerror = function (e) { 
+          console.error("[PHOTO_DEBUG] ERROR in Blob conversion.");
+          reject(new TypeError("Network request failed")); 
+        };
+        xhr.responseType = "blob";
+        xhr.open("GET", uri, true);
+        xhr.send(null);
+      });
+      
+      const storageRef = ref(storage, `profile_photos/${user.uid}.jpg`);
+      console.log("[PHOTO_DEBUG] Step 4: Starting Cloud Storage upload...");
+      
+      await uploadBytes(storageRef, blob);
+      console.log("[PHOTO_DEBUG] Step 5: Upload finished. Fetching URL...");
+      
+      const downloadURL = await getDownloadURL(storageRef);
+      console.log("[PHOTO_DEBUG] Step 6: Received Download URL:", downloadURL);
+      
+      // 🔥 MANDATORY HANDSHAKE: Ensure database is updated BEFORE success
+      console.log("[PHOTO_DEBUG] Step 7: Starting Mandatory Handshake...");
+      await updateProfile({ photoURL: downloadURL });
+      console.log("[PHOTO_DEBUG] Step 8: Database Handshake Success.");
+      
+      // Update local state to "Cement" the photo
+      setLocalPhotoUri(downloadURL);
+      
+      // Success feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Toast.show({ 
+        type: 'success', 
+        text1: '📸 Photo Cemented!', 
+        text2: 'Synced with Cloud Successfully.' 
+      });
+
+      console.log("[PHOTO_DEBUG] Step 9: Process 100% Complete.");
+
+    } catch (err) {
+      console.error('[PHOTO_DEBUG] FATAL UPLOAD ERROR:', err);
+      setLocalPhotoUri(null);
+      Toast.show({ 
+        type: 'error', 
+        text1: 'Upload Failed', 
+        text2: 'Cloud sync failed. Check connection.' 
+      });
+    } finally {
+      setPhotoUploading(false);
+      console.log("[PHOTO_DEBUG] Final: Picker lifecycle complete.");
+    }
+  };
+
+  useEffect(() => {
+    if (userProfile?.photoURL) {
+      console.log("[PHOTO_DEBUG] Account Startup: Photo URL found in Cloud:", userProfile.photoURL);
+    }
+  }, [userProfile?.photoURL]);
 
   const handleLogout = async () => {
     try {
@@ -106,16 +224,20 @@ export default function AccountScreen() {
 
         {/* Profile Card */}
         <Animated.View entering={FadeInDown.duration(600).delay(100)} style={[styles.profileCard, { backgroundColor: theme.card }]}>
-          <View style={styles.avatarWrap}>
-            <View style={[styles.avatar, { backgroundColor: theme.itemBg, borderColor: theme.border }]}>
-              <Text style={[styles.avatarLetter, { color: theme.primary }]}>
-                {userProfile?.displayName ? userProfile.displayName.charAt(0).toUpperCase() : 'J'}
-              </Text>
+          <TouchableOpacity onPress={handlePhotoUpload} activeOpacity={0.85} style={styles.avatarWrap}>
+            {displayPhotoUrl ? (
+              <Image source={{ uri: displayPhotoUrl }} style={styles.avatarPhoto} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: theme.itemBg, borderColor: theme.border }]}>
+                <Text style={[styles.avatarLetter, { color: theme.primary }]}>
+                  {userProfile?.displayName ? userProfile.displayName.charAt(0).toUpperCase() : 'J'}
+                </Text>
+              </View>
+            )}
+            <View style={[styles.editBadge, { backgroundColor: theme.primary }]}>
+               <Ionicons name="camera" size={12} color="#FFF" />
             </View>
-            <TouchableOpacity style={[styles.editBadge, { backgroundColor: theme.card }]}>
-              <Ionicons name="camera" size={12} color={theme.primary} />
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
           
           <Text style={[styles.userName, { color: theme.textPrimary }]}>{userProfile?.displayName || 'Welcome! ✨'}</Text>
           <Text style={[styles.userPhone, { color: theme.textSecondary }]}>{user?.phoneNumber || '+91 9999999999'}</Text>
@@ -212,9 +334,44 @@ export default function AccountScreen() {
         </Animated.View>
 
         <Text style={[styles.versionText, { color: theme.textSecondary }]}>Version 1.0.4 (2026)</Text>
-
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Photo Source Picker Bottom Sheet */}
+      <Modal visible={showPickerModal} transparent animationType="slide" onRequestClose={() => setShowPickerModal(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowPickerModal(false)}>
+          <View style={[styles.pickerSheet, { backgroundColor: theme.card }]}>
+            <View style={[styles.pickerHandle, { backgroundColor: theme.border }]} />
+            <Text style={[styles.pickerTitle, { color: theme.textPrimary }]}>Update Profile Photo</Text>
+
+            <TouchableOpacity style={[styles.pickerOption, { backgroundColor: theme.background }]} onPress={() => pickFromSource('camera')}>
+              <View style={[styles.pickerIconBg, { backgroundColor: isDarkMode ? '#1E293B' : '#EFF6FF' }]}>
+                <Ionicons name="camera" size={24} color="#3B82F6" />
+              </View>
+              <View style={styles.pickerText}>
+                <Text style={[styles.pickerOptTitle, { color: theme.textPrimary }]}>Take Photo</Text>
+                <Text style={[styles.pickerOptSub, { color: theme.textSecondary }]}>Use your camera</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.pickerOption, { backgroundColor: theme.background }]} onPress={() => pickFromSource('gallery')}>
+              <View style={[styles.pickerIconBg, { backgroundColor: isDarkMode ? '#1E293B' : '#F0FDF4' }]}>
+                <Ionicons name="images" size={24} color="#22C55E" />
+              </View>
+              <View style={styles.pickerText}>
+                <Text style={[styles.pickerOptTitle, { color: theme.textPrimary }]}>Choose from Gallery</Text>
+                <Text style={[styles.pickerOptSub, { color: theme.textSecondary }]}>Pick an existing photo</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.pickerCancel, { borderColor: theme.border }]} onPress={() => setShowPickerModal(false)}>
+              <Text style={[styles.pickerCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -254,6 +411,13 @@ const styles = StyleSheet.create({
   avatarWrap: {
     position: 'relative',
     marginBottom: 16,
+  },
+  avatarPhoto: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderColor: '#EAB308',
   },
   avatar: {
     width: 90,
@@ -398,4 +562,54 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 24,
   },
+  pickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
+  },
+  pickerHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    marginBottom: 12,
+  },
+  pickerIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  pickerText: { flex: 1 },
+  pickerOptTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  pickerOptSub: { fontSize: 12, fontWeight: '500' },
+  pickerCancel: {
+    marginTop: 8,
+    paddingVertical: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  pickerCancelText: { fontSize: 15, fontWeight: '700' },
 });

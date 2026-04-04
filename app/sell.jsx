@@ -13,7 +13,8 @@ import {
   KeyboardAvoidingView, 
   Platform,
   ActivityIndicator,
-  Vibration
+  Vibration,
+  Modal
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -27,7 +28,6 @@ import {
   addUserBank, 
   sellGoldSilver 
 } from '../services/augmontApi';
-import { Modal } from 'react-native';
 import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
 
 export default function SellScreen() {

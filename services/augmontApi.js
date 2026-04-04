@@ -1,17 +1,57 @@
 const BASE_URL = 'http://13.63.202.142:5001/api/augmont/v1';
 
+// Client-side cache to prevent 429 Too Many Requests
+let cachedRates = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 10000; // 10 seconds cache
+let isFetching = false;
+let fetchPromise = null;
+
 export const getLiveRates = async () => {
-  try {
-    const response = await fetch(`${BASE_URL}/rates`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching live rates:', error);
-    throw error;
+  const now = Date.now();
+  
+  // Return cache if it's fresh (within 10 seconds)
+  if (cachedRates && (now - lastFetchTime < CACHE_DURATION)) {
+    return cachedRates;
   }
+
+  // If a fetch is already in progress, return that promise to avoid duplicate calls
+  if (isFetching && fetchPromise) {
+    return fetchPromise;
+  }
+
+  isFetching = true;
+  fetchPromise = (async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/rates`);
+      
+      if (!response.ok) {
+        // If we hit Rate Limit (429) or any server error, fallback to cache if available
+        if (cachedRates) {
+          console.warn(`Augmont Rate API returned ${response.status}. Using cached rates.`);
+          return cachedRates; 
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      cachedRates = data;
+      lastFetchTime = Date.now();
+      return data;
+    } catch (error) {
+      console.error('Error fetching live rates:', error);
+      // Fallback to cache even on network error
+      if (cachedRates) {
+        return cachedRates;
+      }
+      throw error;
+    } finally {
+      isFetching = false;
+      fetchPromise = null;
+    }
+  })();
+
+  return fetchPromise;
 };
 
 export const createUserInDB = async (userData, token) => {

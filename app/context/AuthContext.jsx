@@ -3,6 +3,9 @@ import { onAuthStateChanged, signOut, signInWithPhoneNumber } from 'firebase/aut
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from './NotificationContext';
+import { storage } from '../../firebaseConfig';
+import { ref, getDownloadURL } from 'firebase/storage';
 
 const AuthContext = createContext({});
 
@@ -28,6 +31,21 @@ export function AuthProvider({ children }) {
 
     return unsubAuth;
   }, []);
+  
+  const { expoPushToken } = useNotifications();
+
+  // --- FULL DYNAMIC INTEGRATION: Sync Push Token to Firestore ---
+  useEffect(() => {
+    if (user && expoPushToken && expoPushToken !== 'no-token') {
+      const userDocRef = doc(db, 'users', user.uid);
+      setDoc(userDocRef, { 
+        pushToken: expoPushToken,
+        lastTokenSync: new Date().toISOString() 
+      }, { merge: true })
+      .then(() => console.log(`[AUTH_PROFILER] Push Token synced to Cloud: ${expoPushToken.slice(0, 10)}...`))
+      .catch(err => console.error("[AUTH_PROFILER] Token sync failed:", err));
+    }
+  }, [user?.uid, expoPushToken]);
 
   // Dedicated Profile Subscription Effect (Dependencies ensure it re-runs on UID change)
   useEffect(() => {
@@ -41,12 +59,17 @@ export function AuthProvider({ children }) {
     const userDocRef = doc(db, 'users', user.uid);
     
     const unsubProfile = onSnapshot(userDocRef, async (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setUserProfile(data);
-        setIsProfileLoading(false);
-      } else {
-        // Double-check MongoDB for orphaned accounts before declaring them "New"
+      let currentProfile = docSnap.exists() ? docSnap.data() : null;
+      
+      // LOGGING: Verify Cloud Photo Status
+      if (currentProfile?.photoURL) {
+        console.log(`[AUTH_PROFILER] Snapshot: Cloud Photo Link active: ${currentProfile.photoURL.slice(0, 30)}...`);
+      }
+      
+      // DEEP RECOVERY: If Firestore doc is missing OR exists but has no name, check MongoDB
+      if (!currentProfile || !currentProfile.displayName) {
+        console.log(`[AUTH_PROFILER] Profile needs verification. Firestore Exists: ${!!currentProfile}.`);
+        
         try {
           const token = await user.getIdToken();
           const allResponse = await fetch('http://13.63.202.142:5001/api/users', { 
@@ -56,41 +79,64 @@ export function AuthProvider({ children }) {
           if (allResponse.ok) {
             const allUsersData = await allResponse.json();
             const userList = Array.isArray(allUsersData) ? allUsersData : (allUsersData?.data || []);
-            // Try exact match or base 10-digit match in case of formatting differences
+            
             const userPhoneBase = user.phoneNumber ? user.phoneNumber.slice(-10) : '';
-            const existingUser = userList.find(u => 
-              u.mobile === user.phoneNumber || 
-              (userPhoneBase && u.mobile && u.mobile.includes(userPhoneBase))
-            );
+            const existingUser = userList.find(u => {
+              const uMobile = String(u.mobile || '');
+              return uMobile === user.phoneNumber || (userPhoneBase && uMobile.includes(userPhoneBase));
+            });
             
             if (existingUser && existingUser.name) {
-              console.log("Auto-Restoring Firebase Profile...");
+              console.log(`[AUTH_PROFILER] Deep Recovery: Syncing profile for '${existingUser.name}'...`);
               const restoredData = {
+                ...currentProfile, 
                 displayName: existingUser.name,
                 email: existingUser.email,
+                photoURL: currentProfile?.photoURL || existingUser.photoURL || null, // ✅ PROTECT PHOTO
                 appPin: existingUser.mpin || "1234",
                 augmontUniqueId: existingUser.uniqueId || `USR${Date.now()}`,
                 mongoId: existingUser._id,
                 profileSetupComplete: true,
                 uid: user.uid,
-                phoneNumber: user.phoneNumber
+                phoneNumber: user.phoneNumber,
+                recoveredAt: new Date().toISOString()
               };
+              
+              setUserProfile(restoredData);
               await setDoc(userDocRef, restoredData, { merge: true });
+              setIsProfileLoading(false); 
               return; 
             }
           }
         } catch (err) {
-          console.error("Profile recovery check failed:", err);
+          console.error("[AUTH_PROFILER] Deep recovery failed:", err);
         }
-
-        // Truly a new user
-        setUserProfile(null);
-        setIsProfileLoading(false);
       }
+
+      // If Firestore is already complete, just update the state
+      setUserProfile(currentProfile);
+      setIsProfileLoading(false);
     });
 
     return () => unsubProfile();
   }, [user?.uid]);
+
+  // --- 🛡️ THE "CLOUDLOCK" AUTO-RECOVERY: Restore photo directly from Storage if missing ---
+  useEffect(() => {
+    if (user && !userProfile?.photoURL) {
+      console.log("[AUTH_PROFILER] Auto-Recovery: Scanning Google Storage for photo...");
+      const storageRef = ref(storage, `profile_photos/${user.uid}.jpg`);
+      getDownloadURL(storageRef)
+        .then((url) => {
+          console.log("[AUTH_PROFILER] Auto-Recovery Success: Found photo. Restoring to Profile.");
+          updateProfile({ photoURL: url }); 
+        })
+        .catch(() => {
+          // No photo found in storage - this is normal for new users
+          console.log("[AUTH_PROFILER] No pre-existing photo found in Storage.");
+        });
+    }
+  }, [user?.uid, !!userProfile?.photoURL]);
 
   const loginWithPhone = async (phoneNumber, recaptchaVerifier) => {
     try {

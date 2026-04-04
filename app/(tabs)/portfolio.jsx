@@ -9,8 +9,10 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Platform
+  Platform,
+  useWindowDimensions
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   FadeInDown,
@@ -28,13 +30,12 @@ import { getLiveRates, getUserPassbook, getAugmontBuyList } from '../../services
 import { useLanguage } from '../context/LanguageContext';
 import { useRouter } from 'expo-router';
 
-const { width } = Dimensions.get('window');
-const CHART_WIDTH = width - 64; // 32 horizontal padding
 const CHART_HEIGHT = 120;
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-function PerformanceChart({ data, themeColor, isDarkMode }) {
+function PerformanceChart({ data, themeColor, isDarkMode, width }) {
+  const CHART_WIDTH = width - 80; // Adjusted for responsive padding
   const progress = useSharedValue(0);
   const drawingProgress = useSharedValue(0);
   const prevData = useSharedValue(data);
@@ -110,6 +111,8 @@ function PerformanceChart({ data, themeColor, isDarkMode }) {
 }
 
 export default function PortfolioScreen() {
+  const insets = useSafeAreaInsets();
+  const { width, height: screenHeight } = useWindowDimensions();
   const { theme, isDarkMode } = useTheme();
   const { user, userProfile } = useAuth();
   const { t } = useLanguage();
@@ -250,7 +253,16 @@ export default function PortfolioScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={[
+          styles.scrollContent, 
+          { 
+            paddingHorizontal: Math.max(16, width * 0.05),
+            paddingTop: Platform.OS === 'android' ? insets.top : 0 
+          }
+        ]}
+      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity 
@@ -275,9 +287,15 @@ export default function PortfolioScreen() {
             </View>
           </View>
           <View style={styles.valueRow}>
-            <Text style={[styles.currency, { color: theme.textPrimary }]}>₹</Text>
-            <Text style={[styles.mainValue, { color: theme.textPrimary }]}>{fmtInt(totalValue)}</Text>
-            <Text style={[styles.decimals, { color: theme.textSecondary }]}>.{fmtDec(totalValue)}</Text>
+            <Text style={[styles.currency, { color: theme.textPrimary, fontSize: Math.max(18, width * 0.06) }]}>₹</Text>
+            <Text 
+              style={[styles.mainValue, { color: theme.textPrimary, fontSize: Math.max(32, width * 0.11) }]}
+              adjustsFontSizeToFit
+              numberOfLines={1}
+            >
+              {fmtInt(totalValue)}
+            </Text>
+            <Text style={[styles.decimals, { color: theme.textSecondary, fontSize: Math.max(18, width * 0.06) }]}>.{fmtDec(totalValue)}</Text>
           </View>
           
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -311,11 +329,11 @@ export default function PortfolioScreen() {
               ))}
             </View>
           </View>
-          <PerformanceChart data={dynamicChartData[activePeriod]} themeColor={theme.primary} isDarkMode={isDarkMode} />
+          <PerformanceChart data={dynamicChartData[activePeriod]} themeColor={theme.primary} isDarkMode={isDarkMode} width={width} />
         </Animated.View>
 
         {/* Real Gold Jewellery Banner */}
-        <Animated.View entering={FadeInDown.duration(600).delay(300)} style={styles.banner}>
+        <Animated.View entering={FadeInDown.duration(600).delay(300)} style={[styles.banner, { height: Math.min(160, screenHeight * 0.18) }]}>
           <Image
             source={{ uri: 'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?q=80&w=800' }}
             style={styles.bannerImg}
@@ -377,7 +395,7 @@ export default function PortfolioScreen() {
         </View>
 
         {/* Padding for Floating Tab Bar */}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 110 + insets.bottom }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -388,14 +406,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 16,
-    marginTop: Platform.OS === 'android' ? 20 : 0,
   },
   headerBtn: {
     width: 44,
@@ -458,11 +475,10 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   mainValue: {
-    fontSize: 44,
     fontWeight: '900',
+    flexShrink: 1,
   },
   decimals: {
-    fontSize: 24,
     fontWeight: '700',
   },
   divider: {

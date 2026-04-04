@@ -34,7 +34,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const { user, loading, isProfileLoading, isProfileComplete, isSplashFinished, isMpinVerified } = useAuth();
+  const { user, userProfile, loading, isProfileLoading, isProfileComplete, isSplashFinished, isMpinVerified } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -60,12 +60,16 @@ function RootLayoutNav() {
     }
 
     // SCENARIO 2: Incomplete Profiles (Registered but didn't finish Setup)
+    // Only redirect if NOT loading, and we are CERTAIN there is no profile data
     if (!isProfileComplete) {
+      console.log(`[NAV_TRACE] Redirecting to Profile Setup. Reason: ${!userProfile ? 'No Profile' : 'Missing displayName'}`);
       if (!isProfileSetup) {
         router.replace('/profile-setup');
       }
       return;
     }
+
+    console.log(`[NAV_TRACE] Profile Verified: ${userProfile.displayName}. Checking security...`);
 
     // SCENARIO 3: Cold Boot Returning User (Profile complete, but session active. Demands MPIN)
     if (!isMpinVerified) {

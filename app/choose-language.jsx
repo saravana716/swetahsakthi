@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from './context/LanguageContext';
 import { useTheme } from './context/ThemeContext';
 
@@ -16,6 +17,8 @@ const LANGUAGES = [
 
 export default function ChooseLanguageScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { language, setLanguage, t } = useLanguage();
   const { theme } = useTheme();
   const [isContinuing, setIsContinuing] = useState(false);
@@ -86,7 +89,7 @@ export default function ChooseLanguageScreen() {
         </ScrollView>
 
         {/* Footer Button */}
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
           <TouchableOpacity 
             activeOpacity={0.8}
             style={[styles.primaryButton, { backgroundColor: theme.primary }]}
@@ -208,8 +211,9 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: 24,
-    paddingBottom: Platform.OS === 'android' ? 32 : 40,
     backgroundColor: '#FAFAFA',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
   },
   primaryButton: {
     width: '100%',

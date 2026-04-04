@@ -18,7 +18,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { getAugmontKYCStatus, submitAugmontKYC, updateUserKycStatus } from '../services/augmontApi';
 import { validateAge } from '../services/kycVerification';
@@ -33,7 +35,7 @@ const STEPS = [
   { step: 3, title: 'Review & Submit', sub: 'Review your details and submit for verification.' },
 ];
 
-const VerifiedSuccessView = ({ theme, isDarkMode, router, userProfile }) => (
+const VerifiedSuccessView = ({ theme, isDarkMode, router, userProfile, insets }) => (
   <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
     <Stack.Screen options={{ headerShown: false }} />
     <View style={styles.header}>
@@ -104,20 +106,24 @@ const VerifiedSuccessView = ({ theme, isDarkMode, router, userProfile }) => (
         </View>
       </View>
 
+    </ScrollView>
+
+    <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, 60) }]}>
       <TouchableOpacity 
-        style={[styles.startBtn, { marginTop: 40 }]} 
+        style={styles.startBtn} 
         onPress={() => router.replace('/(tabs)/account')}
       >
         <LinearGradient colors={['#EAB308', '#D97706']} style={styles.startBtnGrad}>
           <Text style={styles.startBtnText}>Back to Account</Text>
         </LinearGradient>
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   </SafeAreaView>
 );
 
 export default function KYCScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { theme, isDarkMode } = useTheme();
   const { user, userProfile } = useAuth();
   const [started, setStarted] = useState(false);
@@ -309,7 +315,7 @@ export default function KYCScreen() {
   }
 
   if (localStatus === 'approved') {
-    return <VerifiedSuccessView theme={theme} isDarkMode={isDarkMode} router={router} userProfile={userProfile} />;
+    return <VerifiedSuccessView theme={theme} isDarkMode={isDarkMode} router={router} userProfile={userProfile} insets={insets} />;
   }
 
   const handleImageSelection = async (type, source) => {
@@ -405,21 +411,18 @@ export default function KYCScreen() {
           </View>
 
           {/* Info */}
-          <View style={[styles.infoBox, { backgroundColor: isDarkMode ? '#1E293B' : '#EFF6FF', borderColor: isDarkMode ? '#334155' : '#DBEAFE' }]}>
-            <Ionicons name="information-circle-outline" size={16} color="#3B82F6" />
-            <Text style={[styles.infoText, { color: isDarkMode ? '#93C5FD' : '#1D4ED8' }]}>
-              Verification usually takes less than 2 minutes and is encrypted end-to-end.
-            </Text>
-          </View>
+        </ScrollView>
 
-          <TouchableOpacity style={styles.startBtn} onPress={handleStart}>
+        <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, 60) }]}>
+          <TouchableOpacity 
+            style={styles.startBtn} 
+            onPress={handleStart}
+          >
             <LinearGradient colors={['#EAB308', '#D97706']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.startBtnGrad}>
               <Text style={styles.startBtnText}>Start Verification</Text>
             </LinearGradient>
           </TouchableOpacity>
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }
@@ -634,7 +637,15 @@ export default function KYCScreen() {
       </ScrollView>
 
       {/* Footer */}
-      <View style={[styles.footer, { backgroundColor: theme.background, borderTopColor: theme.border }]}>
+      <View style={[
+        styles.footer, 
+        { 
+          backgroundColor: theme.background, 
+          borderTopColor: theme.border,
+          paddingBottom: Math.max(insets.bottom, 60),
+          paddingHorizontal: 32
+        }
+      ]}>
         <TouchableOpacity 
           style={[styles.continueBtn, (loading || !isFormValid) && { opacity: 0.5 }]} 
           onPress={handleContinue} 
@@ -795,13 +806,15 @@ const styles = StyleSheet.create({
   },
   // Footer
   footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+    paddingHorizontal: 32,
+    paddingTop: 16,
     borderTopWidth: 1,
+  },
+  fixedFooter: {
+    paddingHorizontal: 32,
+    paddingTop: 16,
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
   },
   continueBtn: { borderRadius: 16, overflow: 'hidden', height: 56 },
   continueBtnGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },

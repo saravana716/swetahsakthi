@@ -57,6 +57,20 @@
           "photosPermission": "The app requires access to photos to upload KYC documents.",
           "cameraPermission": "The app requires camera access to capture KYC documents."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow QR Scanning and Camera access for secure payments."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/Logo.jpeg",
+          "color": "#EAB308",
+          "sounds": []
+        }
       ]
     ],
     "experiments": {

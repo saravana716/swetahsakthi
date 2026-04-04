@@ -2,23 +2,36 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLanguage } from '@/app/context/LanguageContext';
 import { useTheme } from '@/app/context/ThemeContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-const { width } = Dimensions.get('window');
+// Static width removed, using hook in component
 
 // A custom bottom tab bar that implements the floating center button layout
 function CustomTabBar({ state, descriptors, navigation }) {
-  const { theme } = useTheme();
-  const { themeColor } = useTheme(); // Keeping themeColor if needed for specific logic, but preferring theme object
-  const { language, t } = useLanguage();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const themeCtx = useTheme() || {};
+  const theme = themeCtx.theme || {
+    background: '#FAFAF4',
+    card: '#FFFFFF',
+    textPrimary: '#1A1A1A',
+    textSecondary: '#9CA3AF',
+    border: '#F3F4F6',
+    itemBg: '#FFFBF0',
+    primary: '#EAB308',
+    isDarkMode: false,
+  };
+  const themeColor = themeCtx.themeColor || '#EAB308';
+  const { language, t } = useLanguage() || { language: 'en', t: (s) => s };
   const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
   const scale = 1; 
-  const fs = (size) => Math.round((language === 'ta' ? size * 0.8 : size) * scale);
+  const fs = (size) => Math.round(((language === 'ta') ? size * 0.8 : size) * scale);
 
   return (
     <>
@@ -71,7 +84,14 @@ function CustomTabBar({ state, descriptors, navigation }) {
         </View>
       </Modal>
 
-      <View style={[styles.tabBarContainer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+      <View style={[
+        styles.tabBarContainer, 
+        { 
+          backgroundColor: theme.card, 
+          borderTopColor: theme.border,
+          marginBottom: insets.bottom > 0 ? insets.bottom + 4 : (Platform.OS === 'ios' ? 34 : 16)
+        }
+      ]}>
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
         let label =
@@ -126,9 +146,15 @@ function CustomTabBar({ state, descriptors, navigation }) {
               style={styles.centerButtonWrapper}
               activeOpacity={0.8}
             >
-              <View style={[styles.centerButtonGlow, { backgroundColor: isFocused ? 'rgba(212, 175, 55, 0.2)' : 'rgba(0,0,0,0.05)' }]}>
-                <View style={[styles.centerButton, { backgroundColor: '#EAB308', shadowColor: '#EAB308' }]}>
-                  <Ionicons name="scan-outline" size={30} color="#FFF" />
+              <View style={[styles.centerButtonGlow, { backgroundColor: isFocused ? 'rgba(212, 175, 55, 0.2)' : 'rgba(0,0,0,0.05)', padding: width < 360 ? 4 : 6 }]}>
+                <View style={[styles.centerButton, { 
+                  backgroundColor: '#EAB308', 
+                  shadowColor: '#EAB308',
+                  width: width < 360 ? 54 : 62,
+                  height: width < 360 ? 54 : 62,
+                  borderRadius: width < 360 ? 27 : 31
+                }]}>
+                  <Ionicons name="scan-outline" size={width < 360 ? 26 : 30} color="#FFF" />
                 </View>
               </View>
             </TouchableOpacity>
@@ -145,7 +171,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
             onLongPress={onLongPress}
             style={styles.tabButton}
           >
-            <Ionicons name={iconName} size={22} color={isFocused ? theme.primary : theme.textSecondary} style={{ marginBottom: 4 }} />
+            <Ionicons name={iconName} size={width < 360 ? 20 : 22} color={isFocused ? theme.primary : theme.textSecondary} style={{ marginBottom: 4 }} />
               <Text 
                 style={{ 
                   color: isFocused ? theme.primary : theme.textSecondary, 
@@ -214,19 +240,19 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBarContainer: {
     flexDirection: 'row',
-    height: 70, 
+    height: Platform.OS === 'ios' ? 70 : 64, 
+    maxHeight: 70,
     backgroundColor: '#FFFFFF',
-    borderRadius: 35,
-    marginHorizontal: 16,
-    marginBottom: Platform.OS === 'ios' ? 34 : 20,
+    borderRadius: 32,
+    marginHorizontal: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
     elevation: 8,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -253,9 +279,6 @@ const styles = StyleSheet.create({
     borderRadius: 40,
   },
   centerButton: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 4 },

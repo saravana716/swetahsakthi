@@ -1,32 +1,110 @@
-import { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-const NotificationContext = createContext();
+const NotificationContext = createContext({});
 
 export function NotificationProvider({ children }) {
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [promoEnabled, setPromoEnabled] = useState(true);
-  const [alertEnabled, setAlertEnabled] = useState(true);
-  const [orderEnabled, setOrderEnabled] = useState(true);
+  const [expoPushToken, setExpoPushToken] = useState('');
+  const [notification, setNotification] = useState(false);
+  const notificationListener = useRef();
+  const responseListener = useRef();
 
-  const toggleNotifications = () => setNotificationsEnabled(prev => !prev);
-  const togglePromos = () => setPromoEnabled(prev => !prev);
-  const toggleAlerts = () => setAlertEnabled(prev => !prev);
-  const toggleOrders = () => setOrderEnabled(prev => !prev);
+  useEffect(() => {
+    // 1. Skip all remote push logic in Expo Go (SDK 53/54 incompatibility)
+    if (Constants.appOwnership === 'expo') {
+      console.warn("Push notifications (remote) are not supported in Expo Go on SDK 53+. Using mock token.");
+      setExpoPushToken('expo-go-mock-token');
+      return;
+    }
+
+    // 2. ONLY attempt to import and use expo-notifications in a Development Build
+    try {
+      const Notifications = require('expo-notifications');
+      
+      // Standard configuration
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
+
+      registerForPushNotificationsAsync(Notifications).then(token => setExpoPushToken(token));
+
+      const { useRouter } = require('expo-router');
+      const router = useRouter();
+
+      notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+        setNotification(notification);
+        console.log("[NOTIF] Foreground Received:", notification.request.content.title);
+      });
+
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+        const { data } = response.notification.request.content;
+        console.log("[NOTIF] Tapped. Data:", data);
+        
+        // Dynamic Routing: If the notification has a target screen, go there
+        if (data?.screen === 'price-alerts' || data?.alertId) {
+          router.push('/price-alerts');
+        }
+      });
+
+      return () => {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+        Notifications.removeNotificationSubscription(responseListener.current);
+      };
+    } catch (err) {
+      console.error("Failed to load expo-notifications:", err);
+    }
+  }, []);
 
   return (
-    <NotificationContext.Provider value={{
-      notificationsEnabled,
-      promoEnabled,
-      alertEnabled,
-      orderEnabled,
-      toggleNotifications,
-      togglePromos,
-      toggleAlerts,
-      toggleOrders
-    }}>
+    <NotificationContext.Provider value={{ expoPushToken, notification }}>
       {children}
     </NotificationContext.Provider>
   );
 }
 
 export const useNotifications = () => useContext(NotificationContext);
+
+// --- HELPER TO GET PUSH TOKEN (Safe for Dev Clients) ---
+async function registerForPushNotificationsAsync(Notifications) {
+  let token;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      console.log('Failed to get push token for push notification!');
+      return;
+    }
+    
+    // Use the EAS project ID
+    const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+    
+    try {
+        token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+        console.log("Push Token Registered:", token);
+    } catch (e) {
+        console.log("Error getting push token:", e);
+    }
+  }
+
+  return token || 'no-token';
+}

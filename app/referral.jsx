@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from './context/LanguageContext';
 import { useTheme } from './context/ThemeContext';
 
 export default function ReferralScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { t } = useLanguage();
   const { theme } = useTheme();
   const [referralCode, setReferralCode] = useState('');
@@ -35,55 +38,68 @@ export default function ReferralScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <KeyboardAvoidingView 
         style={[styles.container, { backgroundColor: theme.background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <View style={styles.content}>
-          {/* Header Icon */}
-          <View style={styles.iconContainer}>
-            <View style={[styles.iconGlow, { backgroundColor: theme.isDarkMode ? 'rgba(212, 175, 55, 0.15)' : 'rgba(212, 175, 55, 0.1)' }]}>
-              <View style={[styles.iconBox, { backgroundColor: theme.primary }]}>
-                <Ionicons name="gift-outline" size={28} color="#FFF" />
+        <ScrollView 
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.mainContent}>
+            {/* Header Icon */}
+            <View style={styles.iconContainer}>
+              <View style={[styles.iconGlow, { backgroundColor: theme.isDarkMode ? 'rgba(212, 175, 55, 0.15)' : 'rgba(212, 175, 55, 0.1)' }]}>
+                <View style={[styles.iconBox, { backgroundColor: theme.primary }]}>
+                  <Ionicons name="gift-outline" size={32} color="#FFF" />
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Titles */}
-          <View style={styles.titleSection}>
-            <Text style={[styles.title, { color: theme.textPrimary }]}>{t('referral')?.haveCode || "Got a Referral Code?"}</Text>
-            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-              {t('referral')?.subtitle || "If someone referred you, enter their code below.\nThey'll earn rewards on your purchases!"}
-            </Text>
-          </View>
-
-          {/* Input Area */}
-          <View style={styles.inputSection}>
-            <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="gift-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={[styles.input, { color: theme.textPrimary }]}
-                placeholder={t('referral')?.inputPlaceholder?.toUpperCase() || "ENTER REFERRAL CODE (E.G. VYV)"}
-                placeholderTextColor={theme.textSecondary}
-                value={referralCode}
-                onChangeText={setReferralCode}
-                autoCapitalize="characters"
-              />
+            {/* Titles */}
+            <View style={styles.titleSection}>
+              <Text style={[styles.title, { color: theme.textPrimary }]}>{t('referral')?.haveCode || "Got a Referral Code?"}</Text>
+              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                {t('referral')?.subtitle || "If someone referred you, enter their code below to unlock rewards!"}
+              </Text>
             </View>
+
+            {/* Input Area */}
+            <View style={styles.inputSection}>
+              <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Ionicons name="gift-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { color: theme.textPrimary }]}
+                  placeholder={t('referral')?.inputPlaceholder?.toUpperCase() || "ENTER REFERRAL CODE"}
+                  placeholderTextColor={theme.textSecondary}
+                  value={referralCode}
+                  onChangeText={setReferralCode}
+                  autoCapitalize="characters"
+                />
+              </View>
+            </View>
+
+            {/* Info Box */}
+            <View style={[styles.infoBox, { backgroundColor: theme.isDarkMode ? '#1E293B' : '#FDF8ED' }]}>
+              <View style={styles.infoRow}>
+                <Text style={styles.bulb}>💡</Text>
+                <View style={styles.infoTextWrapper}>
+                  <Text style={[styles.infoTitle, { color: theme.textPrimary }]}>How it works:</Text>
+                  <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+                    Your referrer will receive <Text style={styles.infoBonus}>1%</Text> of every gold purchase you make as a reward forever.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Spacer for bottom breathing room */}
+            <View style={{ height: 60 }} />
           </View>
+        </ScrollView>
 
-          {/* Info Box */}
-          <View style={[styles.infoBox, { backgroundColor: theme.isDarkMode ? '#1E293B' : '#F9FAFB' }]}>
-            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-              <Text style={styles.bulb}>💡 </Text>
-              <Text style={[styles.infoBold, { color: theme.textPrimary }]}>How it works:</Text> Your referrer will receive <Text style={[styles.infoBold, { color: theme.textPrimary }]}>1%</Text> of every gold purchase you make, as a reward forever. Only one referrer per account.
-            </Text>
-          </View>
-
-          {/* Spacer */}
-          <View style={{ flex: 1 }} />
-        </View>
-
-        {/* Footer Area */}
-        <View style={styles.footer}>
+        {/* Fixed Footer AREA */}
+        <View style={[styles.fixedFooter, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 24) }]}>
           <TouchableOpacity 
             activeOpacity={0.8}
             style={[
@@ -108,14 +124,16 @@ export default function ReferralScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.secondaryButton, { backgroundColor: theme.isDarkMode ? theme.itemBg : '#F9FAFB' }]}
+            style={styles.skipLink}
             onPress={handleSkip}
             disabled={isSkipping || isApplying}
           >
             {isSkipping ? (
-              <ActivityIndicator color={theme.textSecondary} />
+              <ActivityIndicator size="small" color={theme.primary} />
             ) : (
-              <Text style={[styles.secondaryButtonText, { color: theme.textPrimary }]}>{t('referral')?.skipBtn || "Skip for now"}</Text>
+              <Text style={[styles.skipLinkText, { color: theme.textSecondary }]}>
+                {t('referral')?.skipBtn || "Skip for now"}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -132,19 +150,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
+  mainContent: {
+    paddingHorizontal: 36,
+    paddingTop: 40,
+    paddingBottom: 30,
+    alignItems: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   iconContainer: {
     alignItems: 'center',
-    marginTop: Platform.OS === 'android' ? 40 : 20,
-    marginBottom: 20,
+    marginTop: Platform.OS === 'android' ? 30 : 15,
+    marginBottom: 40,
   },
   iconGlow: {
-    padding: 10,
+    padding: 18,
     backgroundColor: 'rgba(212, 175, 55, 0.05)',
-    borderRadius: 50,
+    borderRadius: 70,
   },
   iconBox: {
     width: 64,
@@ -161,21 +184,23 @@ const styles = StyleSheet.create({
   },
   titleSection: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 45,
+    paddingHorizontal: 10,
   },
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#1A1A1A',
-    marginBottom: 12,
+    marginBottom: 14,
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#6B7280',
     fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
   },
   inputSection: {
     marginBottom: 24,
@@ -200,22 +225,40 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   infoBox: {
-    backgroundColor: '#FDF8ED', // Light gold/brown tint
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
     borderWidth: 1,
-    borderColor: '#F3E5CA', // Slightly darker gold/brown border
+    borderColor: '#F3E5CA',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 10,
+    elevation: 1,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  infoTextWrapper: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  infoTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
   },
   infoText: {
     fontSize: 13,
-    color: '#8C5614', // Deep golden brown text
     lineHeight: 20,
   },
   bulb: {
-    fontSize: 14,
+    fontSize: 18,
   },
-  infoBold: {
-    fontWeight: '700',
+  infoBonus: {
+    fontWeight: '900',
+    color: '#D4AF37',
   },
   footer: {
     padding: 24,
@@ -250,13 +293,20 @@ const styles = StyleSheet.create({
   primaryButtonTextDisabled: {
     color: '#9CA3AF',
   },
-  skipButton: {
+  skipLink: {
     paddingVertical: 10,
-    paddingHorizontal: 20,
+    alignItems: 'center',
   },
-  skipButtonText: {
+  skipLinkText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#9CA3AF',
+    textDecorationLine: 'underline',
+  },
+  fixedFooter: {
+    paddingHorizontal: 36,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    backgroundColor: '#FAFAFA',
   },
 });

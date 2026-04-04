@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState, useRef, useEffect } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from './context/LanguageContext';
 import { useTheme } from './context/ThemeContext';
 import { useAuth } from './context/AuthContext';
@@ -14,6 +15,8 @@ import Toast from 'react-native-toast-message';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const { t } = useLanguage();
   const { theme } = useTheme();
   const { loginWithPhone, setIsMpinVerified } = useAuth();
@@ -144,8 +147,15 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView 
         style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
+        <ScrollView 
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
         {/* Header - Simple Back Button */}
         <View style={styles.header}>
           <TouchableOpacity 
@@ -194,12 +204,12 @@ export default function LoginScreen() {
 
           {/* Titles - Balanced & Centered */}
           <View style={styles.titleSection}>
-            <Text style={styles.title}>
+            <Text style={[styles.title, { fontSize: height < 700 ? 22 : 26 }]}>
               {confirmationResult 
                 ? "Verify OTP" 
                 : "Welcome to Swarna\nSakhi"}
             </Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle, { fontSize: height < 700 ? 13 : 14 }]}>
               {confirmationResult 
                 ? `Enter the 6-digit code sent to +91 ${phoneNumber}` 
                 : "Enter your mobile number to continue"}
@@ -237,38 +247,58 @@ export default function LoginScreen() {
             <View style={styles.inputSection}>
               <Text style={styles.inputLabel}>ENTER 6-DIGIT OTP</Text>
               
-              <TouchableOpacity 
-                activeOpacity={1}
-                onPress={() => {
-                  otpInputRef.current?.blur();
-                  setTimeout(() => otpInputRef.current?.focus(), 50);
-                }}
-                style={styles.otpContainer}
-              >
-                {[0, 1, 2, 3, 4, 5].map((index) => (
-                  <View 
-                    key={index} 
-                    style={[
-                      styles.otpBox, 
-                      { borderColor: otp.length === index ? '#D4AF37' : '#E5E7EB' },
-                      otp.length > index && { borderColor: '#D4AF37' }
-                    ]}
-                  >
-                    <Text style={styles.otpText}>
-                      {otp[index] || ""}
-                    </Text>
-                  </View>
-                ))}
-              </TouchableOpacity>
+              <View style={styles.otpGroupContainer}>
+                {/* FIRST Group of 3 */}
+                <View style={styles.otpFieldGroup}>
+                  {[0, 1, 2].map((index) => (
+                    <View 
+                      key={index} 
+                      style={[
+                        styles.otpUnderline, 
+                        { borderBottomColor: otp.length === index ? '#D4AF37' : '#E5E7EB' },
+                        otp.length > index && { borderBottomColor: '#D4AF37' }
+                      ]}
+                    >
+                      <Text style={styles.otpText}>
+                        {otp[index] || ""}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
 
-              <TextInput
-                ref={otpInputRef}
-                style={styles.hiddenInput}
-                keyboardType="number-pad"
-                maxLength={6}
-                value={otp}
-                onChangeText={onOtpChange}
-              />
+                {/* VISUAL GAP in the middle for readability */}
+                <View style={styles.otpMiddleGap} />
+
+                {/* SECOND Group of 3 */}
+                <View style={styles.otpFieldGroup}>
+                  {[3, 4, 5].map((index) => (
+                    <View 
+                      key={index} 
+                      style={[
+                        styles.otpUnderline, 
+                        { borderBottomColor: otp.length === index ? '#D4AF37' : '#E5E7EB' },
+                        otp.length > index && { borderBottomColor: '#D4AF37' }
+                      ]}
+                    >
+                      <Text style={styles.otpText}>
+                        {otp[index] || ""}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                
+                {/* Hidden Input Layer - absolute catch for focus */}
+                <TextInput
+                  ref={otpInputRef}
+                  style={styles.hiddenInput}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={otp}
+                  onChangeText={onOtpChange}
+                  autoFocus={true}
+                  caretHidden={true}
+                />
+              </View>
 
               {/* Timer & Resend */}
               <View style={styles.timerContainer}>
@@ -288,41 +318,43 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {/* Buttons Section - Thick & Pill-shaped */}
-          <View style={styles.buttonsSection}>
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              disabled={(!confirmationResult && !isPhoneValid) || (confirmationResult && otp.length < 6) || isLoadingOtp}
-              style={[
-                styles.primaryButton,
-                ((!confirmationResult && !isPhoneValid) || (confirmationResult && otp.length < 6)) && { backgroundColor: '#E5E7EB' }
-              ]}
-              onPress={confirmationResult ? handleVerifyOtp : handleSendOtp}
-            >
-              {isLoadingOtp ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={[
-                  styles.primaryButtonText,
-                  ((!confirmationResult && !isPhoneValid) || (confirmationResult && otp.length < 6)) && { color: '#9CA3AF' }
-                ]}>
-                  {confirmationResult ? "VERIFY OTP" : "SEND OTP"}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.secondaryButton}
-              onPress={handleSkip}
-              disabled={isLoadingSkip || isLoadingOtp}
-            >
-              {isLoadingSkip ? (
-                <ActivityIndicator color="#6B7280" />
-              ) : (
-                <Text style={styles.secondaryButtonText}>Skip Verification (Dev Mode)</Text>
-              )}
-            </TouchableOpacity>
           </View>
+        </ScrollView>
+
+        {/* Fixed Footer Buttons Section - Thick & Pill-shaped */}
+        <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+          <TouchableOpacity 
+            activeOpacity={0.8}
+            disabled={(!confirmationResult && !isPhoneValid) || (confirmationResult && otp.length < 6) || isLoadingOtp}
+            style={[
+              styles.primaryButton,
+              ((!confirmationResult && !isPhoneValid) || (confirmationResult && otp.length < 6)) && { backgroundColor: '#E5E7EB' }
+            ]}
+            onPress={confirmationResult ? handleVerifyOtp : handleSendOtp}
+          >
+            {isLoadingOtp ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={[
+                styles.primaryButtonText,
+                ((!confirmationResult && !isPhoneValid) || (confirmationResult && otp.length < 6)) && { color: '#9CA3AF' }
+              ]}>
+                {confirmationResult ? "VERIFY OTP" : "SEND OTP"}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.secondaryButton}
+            onPress={handleSkip}
+            disabled={isLoadingSkip || isLoadingOtp}
+          >
+            {isLoadingSkip ? (
+              <ActivityIndicator color="#6B7280" />
+            ) : (
+              <Text style={styles.secondaryButtonText}>Skip Verification (Dev Mode)</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Footer - Consistent Branding */}
@@ -367,9 +399,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   mainContent: {
-    flex: 1,
-    paddingHorizontal: 36, // Wider padding for airy feel
+    paddingHorizontal: 32,
     alignItems: 'center',
+    paddingBottom: 40,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   logoSection: {
     marginTop: 15,
@@ -419,19 +454,17 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   title: {
-    fontSize: 26,
     fontWeight: '800',
     color: '#111827',
     textAlign: 'center',
     lineHeight: 34,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   subtitle: {
-    fontSize: 14,
     color: '#9CA3AF',
     textAlign: 'center',
     fontWeight: '500',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   inputSection: {
     width: '100%',
@@ -562,31 +595,41 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.3)',
   },
-  otpContainer: {
+  otpGroupContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
-    marginVertical: 18,
+    marginVertical: 25,
+    position: 'relative',
   },
-  otpBox: {
-    width: 44,
-    height: 58,
-    borderWidth: 1.5,
-    borderRadius: 14,
+  otpFieldGroup: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  otpMiddleGap: {
+    width: 25,
+  },
+  otpUnderline: {
+    width: 36,
+    height: 52,
+    borderBottomWidth: 3,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
   otpText: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '900',
     color: '#111827',
   },
   hiddenInput: {
     position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     opacity: 0,
-    width: 1,
-    height: 1,
+    zIndex: 99,
   },
   timerContainer: {
     alignItems: 'center',
@@ -601,6 +644,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#D4AF37',
     textDecorationLine: 'underline',
+  },
+  fixedFooter: {
+    paddingHorizontal: 32,
+    paddingTop: 16,
+    backgroundColor: '#FAFAFA',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
   },
 });
 

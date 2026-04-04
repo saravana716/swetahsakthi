@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Animated, Dimensions, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { useLanguage } from '../context/LanguageContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -11,7 +11,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { getLiveRates, getUserByMongoId, getUserPassbook, getAugmontBuyList, getNews } from '../../services/augmontApi';
 
-const { width } = Dimensions.get('window');
+// Static constants removed, moved to component hook
 
 const LANGUAGES = [
   { id: 'en', name: 'English', nativeName: 'Default', flag: '🇬🇧' },
@@ -23,6 +23,8 @@ const LANGUAGES = [
 ];
 
 export default function DashboardScreen() {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const router = useRouter();
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [showCalcInfo, setShowCalcInfo] = useState(false); // Modal state for calculation
@@ -157,8 +159,19 @@ export default function DashboardScreen() {
     const fetchNews = async () => {
       try {
         const data = await getNews(true);
+        // Filter: Only show news published TODAY (not past, not future)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const todayNews = data.filter(news => {
+          const pubDate = new Date(news.publishedAt);
+          return pubDate >= todayStart && pubDate <= todayEnd;
+        });
+
         // Sort by Latest Published Date
-        const sorted = data.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+        const sorted = todayNews.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
         setNewsList(sorted);
       } catch (error) {
         console.error("Failed to fetch dashboard news:", error);
@@ -174,7 +187,7 @@ export default function DashboardScreen() {
   const priceRange = maxPrice - minPrice || 1;
 
   // Chart Dimensions
-  const chartWidth = width - 88;
+  const chartWidth = width - 100;
   const chartHeight = 84;
   
   // Custom SVG Path Calculation
@@ -246,7 +259,16 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={[
+          styles.scrollContent, 
+          { 
+            paddingHorizontal: Math.max(16, width * 0.05),
+            paddingTop: Platform.OS === 'android' ? insets.top : 20
+          }
+        ]} 
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={[styles.greeting, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{`${t('dashboard')?.hello || 'HELLO'}, ${displayGreetingName}`}</Text>
@@ -273,7 +295,7 @@ export default function DashboardScreen() {
                 transform: [{
                   translateX: toggleAnim.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [2, (width - 40 - 4) / 2],
+                    outputRange: [2, (width - (Math.max(16, width * 0.05) * 2) - 4) / 2],
                   })
                 }]
               }
@@ -305,8 +327,14 @@ export default function DashboardScreen() {
           </View>
           
           <View style={styles.balanceRow}>
-            <Text style={[styles.balanceText, { color: theme.textPrimary }]}>{balanceInt}</Text>
-            <Text style={[styles.balanceDec, { color: theme.textPrimary }]}>{balanceDec}</Text>
+            <Text 
+              style={[styles.balanceText, { color: theme.textPrimary, fontSize: Math.max(28, width * 0.1) }]}
+              adjustsFontSizeToFit
+              numberOfLines={1}
+            >
+              {balanceInt}
+            </Text>
+            <Text style={[styles.balanceDec, { color: theme.textPrimary, fontSize: Math.max(16, width * 0.06) }]}>{balanceDec}</Text>
           </View>
 
           {/* Premium SVG Area Chart Trend */}
@@ -370,8 +398,14 @@ export default function DashboardScreen() {
               <Text style={[styles.rateHeaderLabel, { color: theme.textSecondary }]}>{rateLabel}</Text>
             </View>
             <View style={styles.statValRow}>
-              <Text style={[styles.liveRateValue, { color: theme.primary }]}>{liveRateInt}</Text>
-              <Text style={[styles.liveRateDec, { color: theme.primary }]}>{liveRateDec}</Text>
+              <Text 
+                style={[styles.liveRateValue, { color: theme.primary, fontSize: Math.max(18, width * 0.06) }]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+              >
+                {liveRateInt}
+              </Text>
+              <Text style={[styles.liveRateDec, { color: theme.primary, fontSize: Math.max(10, width * 0.035) }]}>{liveRateDec}</Text>
             </View>
             <TouchableOpacity 
               style={styles.viewAllTextContainer}
@@ -528,7 +562,7 @@ export default function DashboardScreen() {
               </TouchableOpacity>
           ))}
         </ScrollView>
-        <View style={{ height: 100 }} />
+        <View style={{ height: 110 + insets.bottom }} />
       </ScrollView>
 
       {/* Full News Reader Modal */}
@@ -713,7 +747,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingVertical: 20,
     paddingTop: Platform.OS === 'android' ? 40 : 10,
   },
   header: {
@@ -836,12 +870,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   balanceText: {
-    fontSize: 38,
     fontWeight: '800',
     letterSpacing: -1,
   },
   balanceDec: {
-    fontSize: 22,
     fontWeight: '700',
     marginLeft: 2,
   },
@@ -929,11 +961,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   liveRateValue: {
-    fontSize: 24,
     fontWeight: '800',
   },
   liveRateDec: {
-    fontSize: 14,
     fontWeight: '700',
   },
   viewAllTextContainer: {
@@ -1031,8 +1061,8 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 0.4,
-    lineHeight: 13,
+    letterSpacing: 0.2,
+    lineHeight: 12,
   },
   insightsHeader: {
     flexDirection: 'row',
