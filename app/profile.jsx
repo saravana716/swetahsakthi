@@ -36,6 +36,7 @@ export default function ProfileScreen() {
   const [augmontData, setAugmontData] = useState(null);
   const [mongoData, setMongoData] = useState(null);
   const [passbookData, setPassbookData] = useState(null);
+  const [bankData, setBankData] = useState(null);
   const [error, setError] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [localPhotoUri, setLocalPhotoUri] = useState(null);
@@ -44,42 +45,55 @@ export default function ProfileScreen() {
   const displayPhotoUrl = localPhotoUri || userProfile?.photoURL;
 
   useEffect(() => {
+    if (!user) return;
+    
     const fetchFullProfile = async () => {
       try {
-        setLoading(true);
-        const token = await user.getIdToken();
-        const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+        const rawId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+        const uniqueId = (rawId && !rawId.startsWith('USR')) ? rawId : null;
         const mongoId = userProfile?.mongoId || userProfile?._id;
 
-        console.log("Syncing Profile Data: (Augmont + MongoDB)");
+        if (!uniqueId && !mongoId) {
+          console.log("[PROFILE_COMPLETE_CHECK] ⏳ Waiting for sync...");
+          setLoading(false);
+          return;
+        }
 
-        // Parallel Fetch: (Official Augmont + Official Passbook + Official MongoDB)
-        const [augmontRes, passbookRes, mongoRes] = await Promise.all([
+        setLoading(true);
+        const token = await user.getIdToken();
+
+        console.log(`[PROFILE_COMPLETE_CHECK] 🔄 Executing Full Sync: (Auth: ${user.uid.slice(0, 5)}...)`);
+
+        const { getUserBanks } = require('../services/augmontApi');
+
+        const [augmontRes, passbookRes, mongoRes, bankRes] = await Promise.all([
           uniqueId ? getAugmontProfile(uniqueId, token) : Promise.resolve(null),
           uniqueId ? getUserPassbook(uniqueId, token) : Promise.resolve(null),
-          mongoId ? getUserByMongoId(mongoId, token) : Promise.resolve(null)
+          mongoId ? getUserByMongoId(mongoId, token) : Promise.resolve(null),
+          uniqueId ? getUserBanks(uniqueId, token) : Promise.resolve(null)
         ]);
 
-        // DETAILED LOGGING FOR VERIFICATION:
-        console.log("-----------------------------------------");
-        console.log("OFFICIAL AUGMONT API RESPONSE:", JSON.stringify(augmontRes, null, 2));
-        console.log("LOCAL MONGODB USER RESPONSE:", JSON.stringify(mongoRes, null, 2));
-        console.log("-----------------------------------------");
+        console.log("\n================ [COMPLETE SYNC REPORT] ================");
+        console.log("AUGMONT_PROFILE:", !!augmontRes);
+        console.log("MONGODB_PROFILE:", !!mongoRes);
+        console.log("BANK_DATA:", !!bankRes);
+        console.log("========================================================\n");
 
         if (augmontRes?.result?.data) setAugmontData(augmontRes.result.data);
         if (passbookRes?.result?.data) setPassbookData(passbookRes.result.data);
         if (mongoRes) setMongoData(mongoRes);
+        if (bankRes?.result?.data) setBankData(bankRes.result.data);
 
       } catch (err) {
-        console.error("Profile Fetch Error:", err);
-        setError("Failed to load your full profile. Please try again later.");
+        console.error("[PROFILE_COMPLETE_CHECK] ❌ Error:", err);
+        setError("Failed to load your complete profile.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchFullProfile();
-  }, []);
+  }, [user?.uid, userProfile?.augmontUniqueId, userProfile?.mongoId]);
 
   const handlePhotoUpload = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -157,7 +171,7 @@ export default function ProfileScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && !userProfile) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
         <Animated.View entering={FadeIn.duration(400)} style={{ width: '100%', paddingHorizontal: 20, gap: 16 }}>
@@ -239,9 +253,19 @@ export default function ProfileScreen() {
             <Text style={[styles.topName, { color: theme.textPrimary }]}>{augmontData?.userName || userProfile?.displayName || 'User'}</Text>
             <Text style={[styles.topSub, { color: theme.textSecondary }]}>{augmontData?.mobileNumber || user?.phoneNumber}</Text>
             
-            <View style={[styles.kycBadge, { backgroundColor: (augmontData?.kycStatus === 'Approved') ? '#10B981' : '#F59E0B' }]}>
-               <Ionicons name={augmontData?.kycStatus === 'Approved' ? "checkmark-circle" : "time"} size={14} color="#FFF" />
-               <Text style={styles.kycText}>{augmontData?.kycStatus || 'Pending'}</Text>
+            {/* KYC Status Badge */}
+            <View style={[
+              styles.kycBadge, 
+              { backgroundColor: (augmontData?.kycStatus?.toLowerCase() === 'approved' || userProfile?.kycStatus === 'approved') ? '#10B981' : '#F59E0B' }
+            ]}>
+               <Ionicons 
+                 name={(augmontData?.kycStatus?.toLowerCase() === 'approved' || userProfile?.kycStatus === 'approved') ? "checkmark-circle" : "time"} 
+                 size={14} 
+                 color="#FFF" 
+               />
+               <Text style={styles.kycText}>
+                 {(augmontData?.kycStatus?.toLowerCase() === 'approved' || userProfile?.kycStatus === 'approved') ? 'Verified' : (augmontData?.kycStatus || 'Pending')}
+               </Text>
             </View>
           </LinearGradient>
         </Animated.View>
@@ -264,27 +288,36 @@ export default function ProfileScreen() {
 
         {/* Identity & Personal Info */}
         <Section title="Identity Details" icon="person-outline">
-          <InfoRow label="Full Name" value={augmontData?.userName} icon="create-outline" />
-          <InfoRow label="Email Address" value={augmontData?.userEmail || userProfile?.email} icon="mail-outline" />
-          <InfoRow label="Mobile" value={augmontData?.mobileNumber || user?.phoneNumber} icon="call-outline" />
-          <InfoRow label="Date of Birth" value={augmontData?.dateOfBirth} icon="calendar-outline" />
-          <InfoRow label="Gender" value={augmontData?.gender} icon="transgender-outline" />
+          <InfoRow label="Full Name" value={augmontData?.userName || mongoData?.name || userProfile?.displayName} icon="create-outline" />
+          <InfoRow label="Email Address" value={augmontData?.userEmail || mongoData?.email || userProfile?.email} icon="mail-outline" />
+          <InfoRow label="Mobile" value={augmontData?.mobileNumber || mongoData?.mobile || user?.phoneNumber} icon="call-outline" />
+          <InfoRow label="Date of Birth" value={augmontData?.dateOfBirth || mongoData?.dateOfBirth || userProfile?.dateOfBirth || userProfile?.dob} icon="calendar-outline" />
+          <InfoRow label="Gender" value={augmontData?.gender || mongoData?.gender || userProfile?.gender} icon="transgender-outline" />
         </Section>
 
         {/* Address & Pincode */}
         <Section title="Address Details" icon="location-outline">
-          <InfoRow label="Primary Address" value={augmontData?.userAddress} icon="map-outline" />
-          <InfoRow label="City" value={augmontData?.userCity} icon="business-outline" />
-          <InfoRow label="State" value={augmontData?.userState} icon="flag-outline" />
-          <InfoRow label="Pincode" value={augmontData?.userPincode} icon="attach-outline" />
+          <InfoRow label="Primary Address" value={augmontData?.userAddress || mongoData?.address || userProfile?.fullAddress || userProfile?.address} icon="map-outline" />
+          <InfoRow label="City" value={augmontData?.userCity || mongoData?.city || userProfile?.userCity || userProfile?.city} icon="business-outline" />
+          <InfoRow label="State" value={augmontData?.userState || mongoData?.state || userProfile?.userState || userProfile?.state} icon="flag-outline" />
+          <InfoRow label="Pincode" value={augmontData?.userPincode || mongoData?.pincode || userProfile?.userPincode || userProfile?.pincode} icon="attach-outline" />
         </Section>
 
         {/* Nominee details */}
         <Section title="Nominee Information" icon="people-outline">
-          <InfoRow label="Nominee Name" value={augmontData?.nomineeName} icon="person-add-outline" />
-          <InfoRow label="Relation" value={augmontData?.nomineeRelation} icon="heart-outline" />
-          <InfoRow label="Nominee DOB" value={augmontData?.nomineeDateOfBirth} icon="calendar-outline" />
+          <InfoRow label="Nominee Name" value={augmontData?.nomineeName || mongoData?.nomineeName || userProfile?.nomineeName} icon="person-add-outline" />
+          <InfoRow label="Relation" value={augmontData?.nomineeRelation || mongoData?.nomineeRelation || userProfile?.nomineeRelation} icon="heart-outline" />
+          <InfoRow label="Nominee DOB" value={augmontData?.nomineeDateOfBirth || mongoData?.nomineeDateOfBirth || userProfile?.nomineeDOB} icon="calendar-outline" />
         </Section>
+
+        {/* Bank details (if available) */}
+        {bankData && bankData.length > 0 && (
+          <Section title="Bank Information" icon="business-outline">
+            <InfoRow label="Bank Name" value={bankData[0]?.bankName} icon="home-outline" />
+            <InfoRow label="Account Number" value={bankData[0]?.accountNumber} icon="card-outline" />
+            <InfoRow label="IFSC Code" value={bankData[0]?.ifscCode} icon="qr-code-outline" />
+          </Section>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>

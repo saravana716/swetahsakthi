@@ -64,6 +64,8 @@ export default function ProfileSetupScreen() {
     cityId: '',
     userPincode: '',
     dateOfBirth: '',
+    gender: 'Male', // Default selection
+    fullAddress: '', // Street / Building / Area
     nomineeName: '',
     nomineeRelation: '',
     nomineeDateOfBirth: '',
@@ -158,7 +160,17 @@ export default function ProfileSetupScreen() {
         uniqueId: finalUniqueId,
         goldBalance: 0,
         walletBalance: 0,
-        kycStatus: "pending"
+        kycStatus: "pending",
+        // Extended Details for Profile Complete Visibility
+        dateOfBirth: formData.dateOfBirth,
+        gender: formData.gender || 'Not Specified',
+        address: formData.fullAddress || `${formData.userCity}, ${formData.userState}`,
+        city: formData.userCity,
+        state: formData.userState,
+        pincode: formData.userPincode,
+        nomineeName: formData.nomineeName || 'N/A',
+        nomineeRelation: formData.nomineeRelation || 'N/A',
+        nomineeDateOfBirth: formData.nomineeDateOfBirth || formData.dateOfBirth
       };
 
       // Helper: Clean mobile to 10 digits
@@ -178,19 +190,20 @@ export default function ProfileSetupScreen() {
         return dateStr;
       };
 
-      // 2. Augmont Payload (as per Swagger)
+      // 2. Augmont Payload (Reverted to working Codes & IDs)
       const augmontPayload = {
         userName: formData.displayName,
         mobileNumber: cleanMobile(mongoPayload.mobile),
         emailId: formData.email,
         uniqueId: finalUniqueId,
-        userState: formData.stateId, // Using official IDs
-        userCity: formData.cityId,   // Using official IDs
+        userState: formData.stateId, // Back to using Code/ID (e.g. "30")
+        userCity: formData.cityId,   // City ID
         userPincode: formData.userPincode,
-        dateOfBirth: formData.dateOfBirth, // Guaranteed YYYY-MM-DD by picker
+        userAddress: formData.fullAddress || formData.userCity, // Required field
+        dateOfBirth: formData.dateOfBirth, 
         nomineeName: formData.nomineeName || 'N/A',
         nomineeRelation: formData.nomineeRelation || 'N/A',
-        nomineeDateOfBirth: formData.nomineeDateOfBirth || formData.dateOfBirth
+        nomineeDateOfBirth: formData.nomineeDateOfBirth || formData.dateOfBirth // Required field
       };
 
       console.log("Starting Two-Way Integration...");
@@ -198,7 +211,9 @@ export default function ProfileSetupScreen() {
       // A. Call MongoDB
       try {
         const dbResponse = await createUserInDB(mongoPayload, token);
-        console.log('MongoDB Response:', dbResponse);
+        console.log("\n================ [MONGODB REGISTRATION RESPONSE] ================");
+        console.log(JSON.stringify(dbResponse, null, 2));
+        console.log("=================================================================\n");
         mongoRecordId = dbResponse?.data?._id || dbResponse?._id || null;
       } catch (dbError) {
         console.log("MongoDB failed, attempting recovery...");
@@ -222,7 +237,9 @@ export default function ProfileSetupScreen() {
       // B. Call Augmont (Two-Way Sync)
       try {
         const augResponse = await createUserInAugmont(augmontPayload, token);
-        console.log('Augmont Response:', augResponse);
+        console.log("\n================ [AUGMONT REGISTRATION RESPONSE] ================");
+        console.log(JSON.stringify(augResponse, null, 2));
+        console.log("=================================================================\n");
         isSuccessMessage = "Profile & Augmont linked successfully!";
       } catch (augError) {
         console.error("Augmont integration failed but MongoDB ok:", augError);
@@ -249,10 +266,17 @@ export default function ProfileSetupScreen() {
             augmontUniqueId: finalUniqueId,
             mongoId: mongoRecordId,
             profileSetupComplete: true,
-            // Keep additional info for records
+            // Standardizing names for Profile Screen
+            dateOfBirth: formData.dateOfBirth,
             userState: formData.userState,
+            userCity: formData.userCity,
             userPincode: formData.userPincode,
-            dob: formData.dateOfBirth,
+            gender: formData.gender || 'Not Specified',
+            fullAddress: formData.fullAddress,
+            nomineeName: formData.nomineeName || 'N/A',
+            nomineeRelation: formData.nomineeRelation || 'N/A',
+            nomineeDOB: formData.nomineeDateOfBirth || 'N/A',
+            address: formData.fullAddress || `${formData.userCity}, ${formData.userState}` // Creating a fallback address
           });
         } catch (fbError) {
           console.error("Firebase save failed:", fbError);
@@ -357,6 +381,34 @@ export default function ProfileSetupScreen() {
                 onChange={onBirthDateChange}
               />
             )}
+
+            <Text style={[styles.sectionTitle, { color: theme.primary, marginTop: 12 }]}>Gender Selection</Text>
+            <View style={styles.genderContainer}>
+              {['Male', 'Female', 'Other'].map((g) => (
+                <TouchableOpacity 
+                  key={g} 
+                  activeOpacity={0.8}
+                  style={[
+                    styles.genderBtn, 
+                    { backgroundColor: formData.gender === g ? theme.primary : theme.card, borderColor: theme.border }
+                  ]}
+                  onPress={() => setFormData({ ...formData, gender: g })}
+                >
+                  <Text style={[styles.genderText, { color: formData.gender === g ? '#FFF' : theme.textPrimary }]}>{g}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.divider} />
+            <Text style={[styles.sectionTitle, { color: theme.primary }]}>Address Details</Text>
+
+            <CustomInput
+              icon="home-outline"
+              theme={theme}
+              placeholder="STREET / BUILDING / AREA"
+              value={formData.fullAddress}
+              onChangeText={(txt) => setFormData({ ...formData, fullAddress: txt })}
+            />
 
             <Pressable onPress={() => setShowStateModal(true)}>
               <View pointerEvents="none">
@@ -679,5 +731,23 @@ const styles = StyleSheet.create({
     marginTop: 20,
     alignItems: 'center',
     padding: 10,
+  },
+  genderContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  genderBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  genderText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

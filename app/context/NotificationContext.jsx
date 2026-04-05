@@ -95,14 +95,22 @@ async function registerForPushNotificationsAsync(Notifications) {
       return;
     }
     
-    // Use the EAS project ID
-    const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+    // Use the EAS project ID (Robust detection)
+    let projectId = Constants?.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+        projectId = Constants?.easConfig?.projectId;
+    }
+    
+    if (!projectId) {
+      console.error("[NOTIF] Critical Error: EAS Project ID is missing from app.json/Constants.");
+      return 'no-token';
+    }
     
     try {
         token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
         console.log("Push Token Registered:", token);
     } catch (e) {
-        console.log("Error getting push token:", e);
+        console.error("Error getting push token:", e);
     }
   }
 

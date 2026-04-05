@@ -2,12 +2,14 @@ import React, { forwardRef, useImperativeHandle, useState, useRef } from 'react'
 import { Modal, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, useWindowDimensions, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * A custom reCAPTCHA verifier that uses a WebView to avoid legacy native dependencies.
  * This replaces the broken 'expo-firebase-recaptcha' package.
  */
 const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire, onError }, ref) => {
+  const insets = useSafeAreaInsets();
   const { width, height: screenHeight } = useWindowDimensions();
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ const CustomRecaptchaVerifier = forwardRef(({ firebaseConfig, onVerify, onExpire
           </View>
 
           {/* Sticky Footer for Verification */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <Text style={styles.instructionText}>
               {isDone ? "Verification complete!" : "Select all required images and tap Verify"}
             </Text>

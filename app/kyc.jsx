@@ -232,23 +232,69 @@ export default function KYCScreen() {
         setTimeout(() => setLoadingStatus("Finalizing Profile..."), 3000);
 
         const token = await user.getIdToken();
-        const uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
+        let uniqueId = userProfile?.augmontUniqueId || userProfile?.uniqueId;
         
         if (!uniqueId) throw new Error("Augmont ID not found. Please complete profile first.");
+
+        // 🛡️ [AUTO-REPAIR] If it's a placeholder ID, try to register officially now!
+        if (uniqueId.startsWith('USR')) {
+          setLoadingStatus("Creating Augmont Account...");
+          try {
+            const regPayload = {
+              userName: userProfile.displayName || nameAsPerPan,
+              mobileNumber: user.phoneNumber.slice(-10),
+              emailId: userProfile.email || "user@example.com",
+              uniqueId: uniqueId, 
+              userState: userProfile.stateId || "30", // Default to Tamil Nadu if missing
+              userCity: userProfile.cityId || "2979", // Default to Chennai
+              userPincode: userProfile.userPincode || "600001",
+              dateOfBirth: dateOfBirth, 
+              nomineeName: 'N/A',
+              nomineeRelation: 'N/A',
+              nomineeDateOfBirth: dateOfBirth
+            };
+            
+            const { createUserInAugmont } = require('../services/augmontApi');
+            const regResponse = await createUserInAugmont(regPayload, token);
+            if (regResponse?.result?.data?.uniqueId) {
+              uniqueId = regResponse.result.data.uniqueId;
+              
+              // Persist the real ID to Firestore immediately
+              const { doc, updateDoc } = require('firebase/firestore');
+              const { db } = require('../firebaseConfig');
+              await updateDoc(doc(db, 'users', user.uid), {
+                augmontUniqueId: uniqueId
+              });
+              console.log(`[KYC_AUTO_REPAIR] 🚀 Upgraded to real ID: ${uniqueId}`);
+            }
+          } catch (regErr) {
+            console.error("[KYC_AUTO_REPAIR] Failed to auto-register:", regErr);
+          }
+        }
 
         // 1. Submit to Augmont with Images
         const verificationResponse = await submitAugmontKYC(uniqueId, {
           panNumber,
           dateOfBirth,
           nameAsPerPan,
-          aadharNumber: aadharNumber.replace(/\s/g, ''), // Strip spaces: "9635 9635 9635" → "963596359635"
+          aadharNumber: aadharNumber.replace(/\s/g, ''), // Strip spaces
           panImage,
           aadharImage
         }, token);
         
         console.log("KYC Verification Response:", JSON.stringify(verificationResponse, null, 2));
 
-        // 2. Sync with MongoDB
+        // 2. Sync Status to ALL databases
+        const { doc, updateDoc } = require('firebase/firestore');
+        const { db } = require('../firebaseConfig');
+        
+        // Firestore Mastery: Update status here to trigger all UI observers immediately!
+        await updateDoc(doc(db, 'users', user.uid), {
+           kycStatus: 'approved',
+           kycVerifiedAt: new Date().toISOString()
+        });
+
+        // Legacy Mongo Sync (Background)
         await updateUserKycStatus(userProfile.mongoId || userProfile._id, 'approved', token);
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

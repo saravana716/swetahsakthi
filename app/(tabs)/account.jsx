@@ -298,8 +298,16 @@ export default function AccountScreen() {
             title="Notifications" 
             subtitle="Alerts & Updates"
             isSwitch={true}
-            value={true} // Placeholder for notifications state if not in context
-            onValueChange={() => {}} 
+            value={userProfile?.notificationsEnabled !== false} // Default to true if undefined
+            onValueChange={(val) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              updateProfile({ notificationsEnabled: val });
+              Toast.show({
+                type: 'success',
+                text1: val ? 'Notifications Enabled' : 'Notifications Silenced',
+                text2: val ? 'You will receive price alerts.' : 'Price alerts will be local only.'
+              });
+            }} 
           />
           <SettingItem 
             icon="shield-checkmark-outline" 

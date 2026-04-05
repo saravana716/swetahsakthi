@@ -80,6 +80,10 @@ export function AuthProvider({ children }) {
             const allUsersData = await allResponse.json();
             const userList = Array.isArray(allUsersData) ? allUsersData : (allUsersData?.data || []);
             
+            console.log("\n================ [DEEP RECOVERY: MONGODB SEARCH] ================");
+            console.log(`Found ${userList.length} total records. Searching for matches...`);
+            console.log("=================================================================\n");
+
             const userPhoneBase = user.phoneNumber ? user.phoneNumber.slice(-10) : '';
             const existingUser = userList.find(u => {
               const uMobile = String(u.mobile || '');
@@ -96,6 +100,8 @@ export function AuthProvider({ children }) {
                 appPin: existingUser.mpin || "1234",
                 augmontUniqueId: existingUser.uniqueId || `USR${Date.now()}`,
                 mongoId: existingUser._id,
+                kycStatus: existingUser.kycStatus || 'pending',
+                kycVerificationStatus: existingUser.kycVerificationStatus || 'pending',
                 profileSetupComplete: true,
                 uid: user.uid,
                 phoneNumber: user.phoneNumber,

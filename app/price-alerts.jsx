@@ -178,53 +178,57 @@ export default function PriceAlertsScreen() {
         setRatesLoading(false);
 
         if (!user) return;
-        setAlerts(currentAlerts => {
-          currentAlerts.forEach(async (alert) => {
-            if (!alert.enabled || firedAlerts.current.has(alert.id)) return;
 
-            const currentRate = alert.type === 'gold' ? gRate : sRate;
-            const targetPrice = parseFloat(alert.targetPrice);
-            let triggered = false;
-            let notifBody = '';
-            const metalName = alert.type === 'gold' ? 'Gold (24K)' : 'Silver (999)';
-            const formattedRate = `₹${currentRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-            const formattedTarget = `₹${targetPrice.toLocaleString('en-IN')}`;
-
-            // STRICTER TRIGGER LOGIC: Must be strictly CROSSING the price
-            if (alert.condition === 'below' && currentRate < targetPrice) {
-              triggered = true;
-              notifBody = `${metalName} dropped below ${formattedRate} (target: ${formattedTarget})`;
-            } else if (alert.condition === 'above' && currentRate > targetPrice) {
-              triggered = true;
-              notifBody = `${metalName} rose above ${formattedRate} (target: ${formattedTarget})`;
-            }
-
-            if (triggered) {
-              firedAlerts.current.add(alert.id);
-              const notifTitle = `🔔 Price Alert: ${metalName}`;
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              await sendLocalNotification(notifTitle, notifBody, { alertId: alert.id });
-
-              const alertRef = doc(db, 'users', user.uid, 'alerts', alert.id);
-              if (alert.id && !alert.id.startsWith('temp_')) {
-                await updateDoc(alertRef, { 
-                    enabled: false,
-                    triggered: true,
-                    triggeredAt: serverTimestamp(),
-                    lastTriggeredPrice: currentRate
-                });
-              }
-
-              await saveNotificationToFirestore(user.uid, {
-                title: notifTitle,
-                message: notifBody,
-                icon: alert.type === 'gold' ? 'trending-up' : 'trending-down',
-                color: alert.type === 'gold' ? '#EAB308' : '#94A3B8',
-              });
-            }
-          });
-          return currentAlerts;
+        // 1. Identify which alerts NEED to fire
+        const alertsToFire = alerts.filter(alert => {
+          if (!alert.enabled || firedAlerts.current.has(alert.id)) return false;
+          const currentRate = alert.type === 'gold' ? gRate : sRate;
+          const targetPrice = parseFloat(alert.targetPrice);
+          
+          if (alert.condition === 'below' && currentRate < targetPrice) return true;
+          if (alert.condition === 'above' && currentRate > targetPrice) return true;
+          return false;
         });
+
+        // 2. Fire them sequentially and update DB
+        for (const alert of alertsToFire) {
+           firedAlerts.current.add(alert.id);
+           
+           const currentRate = alert.type === 'gold' ? gRate : sRate;
+           const metalName = alert.type === 'gold' ? 'Gold (24K)' : 'Silver (999)';
+           const formattedRate = `₹${currentRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+           const formattedTarget = `₹${parseFloat(alert.targetPrice).toLocaleString('en-IN')}`;
+           const notifTitle = `🔔 Price Alert: ${metalName}`;
+           const notifBody = `${metalName} ${alert.condition === 'below' ? 'dropped below' : 'rose above'} ${formattedRate} (target: ${formattedTarget})`;
+
+           // A. UI FEEDBACK
+           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+           await sendLocalNotification(notifTitle, notifBody, { alertId: alert.id });
+
+           // B. DISABLE ALERT IN CLOUD
+           if (alert.id && !alert.id.startsWith('temp_')) {
+             try {
+               const alertRef = doc(db, 'users', user.uid, 'alerts', alert.id);
+               await updateDoc(alertRef, { 
+                   enabled: false,
+                   triggered: true,
+                   triggeredAt: serverTimestamp(),
+                   lastTriggeredPrice: currentRate
+               });
+             } catch(e) { console.error("Alert DB Update Failed:", e); }
+           }
+
+           // C. SAVE TO NOTIFICATION HISTORY (The critical fix!)
+           try {
+             await saveNotificationToFirestore(user.uid, {
+               title: notifTitle,
+               message: notifBody,
+               icon: alert.type === 'gold' ? 'trending-up' : 'trending-down',
+               color: alert.type === 'gold' ? '#EAB308' : '#94A3B8',
+             });
+             console.log(`[ALERTS] Notification history entry created for ${alert.id}`);
+           } catch(e) { console.error("History Save Failed:", e); }
+        }
       } catch (err) { }
     };
 
@@ -326,7 +330,29 @@ export default function PriceAlertsScreen() {
           <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Price Alerts</Text>
           <Text style={[styles.headerSub, { color: theme.textSecondary }]}>Real-time market triggers</Text>
         </View>
-        <View style={{ width: 44 }} />
+        <TouchableOpacity 
+          style={[styles.testBtn, { borderColor: theme.border }]} 
+          onPress={async () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const title = "🔔 Test Success!";
+            const body = "Your phone is perfectly configured for price alerts.";
+            
+            // 1. Trigger the Banner
+            await sendLocalNotification(title, body);
+            
+            // 2. Log to Notification History (The "Notification Screen")
+            if (user?.uid) {
+              await saveNotificationToFirestore(user.uid, {
+                title: title,
+                message: body,
+                icon: 'flask',
+                color: '#3B82F6',
+              });
+            }
+          }}
+        >
+          <Ionicons name="flask-outline" size={18} color={theme.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -408,6 +434,14 @@ export default function PriceAlertsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            
+            {/* 📈 REAL-TIME CONTEXT: Show what price we are comparing against */}
+            <View style={[styles.priceContext, { backgroundColor: isDarkMode ? '#1E293B' : '#F8FAFC' }]}>
+               <Text style={[styles.contextLabel, { color: theme.textSecondary }]}>CURRENT {newType.toUpperCase()} PRICE:</Text>
+               <Text style={[styles.contextValue, { color: primaryColor }]}>
+                  ₹{(newType === 'gold' ? goldRate : silverRate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+               </Text>
+            </View>
             <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 16 }]}>TARGET PRICE (₹)</Text>
             <View style={[styles.priceInput, { backgroundColor: theme.background, borderColor: theme.border }]}>
                <TextInput style={[styles.priceField, { color: theme.textPrimary }]} placeholder="Enter price" placeholderTextColor={theme.textSecondary} keyboardType="numeric" value={newPrice} onChangeText={setNewPrice} />
@@ -467,4 +501,8 @@ const styles = StyleSheet.create({
   createBtn: { marginTop: 24, borderRadius: 16, overflow: 'hidden', height: 56 },
   createBtnGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   createBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  testBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  priceContext: { marginTop: 16, padding: 12, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  contextLabel: { fontSize: 10, fontWeight: '800' },
+  contextValue: { fontSize: 14, fontWeight: '900' },
 });
