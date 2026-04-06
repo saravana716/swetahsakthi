@@ -21,7 +21,11 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.saravanapriyan.swarna_sakthi_app",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "output": "static",
@@ -71,7 +75,8 @@
           "color": "#EAB308",
           "sounds": []
         }
-      ]
+      ],
+      "./plugins/withPayURepos"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -80,9 +85,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "6df1d546-9433-4e9c-8ec7-a29479430a6c"
+        "projectId": "509dee85-8f1a-4da5-8006-aa7bb10a21f4"
       }
     },
-    "owner": "manisara07"
+    "owner": "saravanapriyan"
   }
 }

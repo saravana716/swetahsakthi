@@ -12,9 +12,12 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './context/ThemeContext';
+import PayUService from '../services/payuService';
+import { auth } from '../firebaseConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -45,6 +48,7 @@ export default function RedeemScreen() {
   const PRODUCTS     = isGold ? GOLD_PRODUCTS : SILVER_PRODUCTS;
 
   const [cart, setCart] = useState({});
+  const [loading, setLoading] = useState(false);
 
   const addToCart    = (id) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCart(p => ({ ...p, [id]: (p[id] || 0) + 1 })); };
   const removeFromCart = (id) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCart(p => { const u = { ...p }; if (u[id] > 1) u[id] -= 1; else delete u[id]; return u; }); };
@@ -55,14 +59,48 @@ export default function RedeemScreen() {
     return sum + (prod ? prod.price * qty : 0);
   }, 0);
 
-  const handleProceed = () => {
-    if (totalItems === 0) { Alert.alert('No Items', 'Please add at least one product to redeem.'); return; }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(
-      'Redemption Initiated! 📦',
-      `${totalItems} item(s) worth ₹${totalPrice.toLocaleString('en-IN')} will be dispatched within 3-5 business days.`,
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+  const handleProceed = async () => {
+    if (totalItems === 0) {
+      Alert.alert('No Items', 'Please add at least one product to redeem.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const user = auth.currentUser;
+      const txnid = 'SSK' + Date.now(); // Unique Transaction ID
+
+      console.log('[REDEEM] Initiating PayU Payment for amount:', totalPrice);
+
+      const paymentResult = await PayUService.launchPayment({
+        amount: totalPrice,
+        productInfo: `${totalItems} items (${metalName})`,
+        firstName: user?.displayName || 'User',
+        email: user?.email || 'user@example.com',
+        phone: user?.phoneNumber || '9999999999',
+        txnid: txnid
+      });
+
+      if (paymentResult.status === 'success') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          'Payment Successful! 🎉',
+          `Order ${txnid} placed successfully. Your ${metalName.toLowerCase()} will be dispatched soon.`,
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/orders') }]
+        );
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Payment Failed', 'The transaction could not be completed. Please try again.');
+      }
+
+    } catch (err) {
+      console.error('[REDEEM] Payment Error:', err);
+      Alert.alert('Error', 'Failed to initialize payment. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -133,14 +171,20 @@ export default function RedeemScreen() {
             <Text style={[styles.footerQty,   { color: theme.textSecondary }]}>{totalItems} item{totalItems > 1 ? 's' : ''} selected</Text>
             <Text style={[styles.footerTotal, { color: theme.textPrimary }]}>₹{totalPrice.toLocaleString('en-IN')}</Text>
           </View>
-          <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed}>
+          <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed} disabled={loading}>
             <LinearGradient
               colors={isGold ? ['#EAB308', '#D97706'] : ['#94A3B8', '#64748B']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={styles.proceedGrad}
             >
-              <Text style={styles.proceedText}>Proceed</Text>
-              <Ionicons name="arrow-forward" size={18} color="#FFF" />
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Text style={styles.proceedText}>Proceed</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                </>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>

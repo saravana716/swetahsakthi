@@ -6,6 +6,11 @@ const config = getDefaultConfig(__dirname);
 config.resolver.unstable_enablePackageExports = true;
 config.resolver.unstable_conditionNames = ['react-native', 'require', 'import'];
 
+// EXCLUDE functions folder from Metro to avoid conflicts with backend node_modules
+config.resolver.blockList = [
+  /.*\/functions\/node_modules\/.*/,
+];
+
 config.resolver.sourceExts = [
   ...config.resolver.sourceExts,
   'mjs',

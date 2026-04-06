@@ -22,6 +22,7 @@ import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import ShimmerPlaceholder from '../components/ShimmerPlaceholder';
 import AnimatedButton from '../components/AnimatedButton';
+import PayUService from '../services/payuService';
 
 export default function BuyScreen() {
   const router = useRouter();
@@ -78,20 +79,43 @@ export default function BuyScreen() {
        return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // REDIRECT TO PAYMENT MOCK GATEWAY AS REQUESTED
-    router.push({
-      pathname: '/payment-mock',
-      params: {
-        finalRsAmount: finalRsAmount.toString(),
-        finalGmQuantity: finalGmQuantity.toString(),
-        rate: rate.toString(),
-        blockId: blockId,
-        metalType: isGold ? 'gold' : 'silver',
-        mode: mode
+    try {
+      setIsProcessing(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const txnid = 'SSK' + Date.now(); // Unique Transaction ID
+
+      console.log('[BUY] Initiating PayU Payment for amount:', finalRsAmount);
+
+      const paymentResult = await PayUService.launchPayment({
+        amount: finalRsAmount,
+        productInfo: `Purchase ${finalGmQuantity}g ${isGold ? 'Gold' : 'Silver'}`,
+        firstName: userProfile?.firstName || 'User',
+        email: user?.email || 'user@example.com',
+        phone: userProfile?.phoneNumber || '9999999999',
+        txnid: txnid
+      });
+
+      if (paymentResult.status === 'success') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // After success, you can call your API to update user balance
+        Toast.show({
+          type: 'success',
+          text1: 'Payment Successful!',
+          text2: `You bought ${finalGmQuantity}g of ${isGold ? 'gold' : 'silver'}.`
+        });
+        router.replace('/(tabs)/orders');
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Toast.show({ type: 'error', text1: 'Payment Failed', text2: 'Please try again.' });
       }
-    });
+
+    } catch (err) {
+      console.error('[BUY] Payment Error:', err);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to initialize payment.' });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
