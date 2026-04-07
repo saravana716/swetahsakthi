@@ -59,6 +59,9 @@ project(':payu-non-seam-less-react').projectDir = new File(rootProject.projectDi
   config = withMainApplication(config, (config) => {
     // Correctly insert import AFTER the package declaration
     const packageImport = "\nimport com.payubiz.PayUBizSdkPackage";
+    const packageAdd = "add(PayUBizSdkPackage())";
+
+    // 1. Ensure Import
     if (!config.modResults.contents.includes("import com.payubiz.PayUBizSdkPackage")) {
       config.modResults.contents = config.modResults.contents.replace(
         /(package\s+[\w.]+)/,
@@ -66,22 +69,25 @@ project(':payu-non-seam-less-react').projectDir = new File(rootProject.projectDi
       );
     }
 
-    // Add to package list
-    const packageAdd = "packages.add(PayUBizSdkPackage())";
+    // 2. Add to package list (most robust way)
     if (!config.modResults.contents.includes("PayUBizSdkPackage()")) {
-      // Look for the PackageList apply block
-      const search = /PackageList\(this\).packages.apply\s*{/;
-      if (config.modResults.contents.match(search)) {
-          config.modResults.contents = config.modResults.contents.replace(search, (match) => `${match}\n      ${packageAdd}`);
-      } else {
-          // Fallback if the pattern is slightly different
-          const fallbackSearch = /override\s+fun\s+getPackages\(\):\s+List<ReactPackage>\s*=\s*PackageList\(this\)\.packages/;
-          if (config.modResults.contents.match(fallbackSearch)) {
-            config.modResults.contents = config.modResults.contents.replace(
-              fallbackSearch,
-              "override fun getPackages(): List<ReactPackage> = PackageList(this).packages.toMutableList().apply { add(PayUBizSdkPackage()) }"
-            );
-          }
+      // Pattern A: Standard Expo apply block
+      const applySearch = /(PackageList\(this\)\.packages\.apply\s*{)/;
+      if (config.modResults.contents.match(applySearch)) {
+        config.modResults.contents = config.modResults.contents.replace(
+          applySearch,
+          `$1\n      ${packageAdd}`
+        );
+      } 
+      // Pattern B: No apply block, direct return
+      else {
+        const directSearch = /(override\s+fun\s+getPackages\(\):\s+List<ReactPackage>\s*=\s*PackageList\(this\)\.packages)/;
+        if (config.modResults.contents.match(directSearch)) {
+          config.modResults.contents = config.modResults.contents.replace(
+            directSearch,
+            "override fun getPackages(): List<ReactPackage> = PackageList(this).packages.toMutableList().apply { add(PayUBizSdkPackage()) }"
+          );
+        }
       }
     }
     return config;
