@@ -173,3 +173,17 @@ exports.generatePayUHash = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Hash generation failed');
     }
 });
+/**
+ * Get PayU Merchant Key for frontend initialization
+ */
+exports.getPayUMerchantKey = functions.https.onCall(async (data, context) => {
+    try {
+        const payuConfig = functions.config().payu;
+        if (!payuConfig || !payuConfig.key) {
+            throw new functions.https.HttpsError('failed-precondition', 'PayU Key not configured on server.');
+        }
+        return { merchantKey: payuConfig.key };
+    } catch (err) {
+        throw new functions.https.HttpsError('internal', err.message);
+    }
+});

@@ -4,6 +4,7 @@ import PayUBizSdk from 'payu-non-seam-less-react';
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 const generatePayUHash = httpsCallable(functions, 'generatePayUHash');
+const getPayUMerchantKey = httpsCallable(functions, 'getPayUMerchantKey');
 
 /**
  * PayU Service for Swarna Sakthi
@@ -29,9 +30,14 @@ class PayUService {
     try {
       const { amount, productInfo, firstName, email, phone, txnid } = params;
 
-      // 1. Prepare PayUPaymentParams
+      // 1. Get Real Merchant Key from Server
+      console.log('[PayU] Fetching Merchant Key...');
+      const configResponse = await getPayUMerchantKey();
+      const { merchantKey } = configResponse.data;
+
+      // 2. Prepare PayUPaymentParams
       const payUPaymentParams = {
-        key: 'merchant_key_placeholder', // Will be replaced by backend during hash generation
+        key: merchantKey,
         transactionId: txnid,
         amount: amount.toString(),
         productInfo: productInfo,
@@ -40,17 +46,17 @@ class PayUService {
         phone: phone,
         android_surl: 'https://payu.herokuapp.com/success',
         android_furl: 'https://payu.herokuapp.com/failure',
-        environment: '1', // 0 for Production, 1 for Test
-        userCredential: `merchant_key:${email}`,
+        environment: '1', // 0 for Production, 1 for Test (Update to '0' for live)
+        userCredential: `${merchantKey}:${email}`,
       };
 
-      // 2. Open SDK with correct method name
+      // 3. Open SDK
       console.log('[PayU] Launching OpenCheckoutScreen...');
       PayUBizSdk.openCheckoutScreen(payUPaymentParams);
 
-      // 3. Setup Listeners
+      // 4. Setup Listeners
       return new Promise((resolve) => {
-        // --- A. HASH GENERATION LISTENER (Mandatory for this SDK) ---
+        // --- A. HASH GENERATION LISTENER ---
         const hashSub = this.eventEmitter.addListener('generateHash', async (data) => {
           try {
             console.log('[PayU] SDK requested hash for:', data);
@@ -60,10 +66,8 @@ class PayUService {
               productinfo: productInfo,
               firstname: firstName,
               email: email,
-              ...data // Pass additional params if SDK provides them
+              ...data
             });
-
-            // Send hash back to SDK
             PayUBizSdk.hashGenerated(response.data);
           } catch (e) {
             console.error('[PayU] Hash Callback Error:', e);

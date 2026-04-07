@@ -107,7 +107,12 @@ export default function BuyScreen() {
         router.replace('/(tabs)/orders');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Toast.show({ type: 'error', text1: 'Payment Failed', text2: 'Please try again.' });
+        const errorDetail = paymentResult.data?.errorMsg || paymentResult.data?.error_Message || 'Please try again.';
+        Toast.show({ 
+          type: 'error', 
+          text1: 'Payment Failed', 
+          text2: errorDetail
+        });
       }
 
     } catch (err) {
