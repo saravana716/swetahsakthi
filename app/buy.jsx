@@ -112,7 +112,9 @@ export default function BuyScreen() {
 
     } catch (err) {
       console.error('[BUY] Payment Error:', err);
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to initialize payment.' });
+      // Detailed error reporting for the user
+      const errMsg = err.message || 'Failed to initialize payment.';
+      Toast.show({ type: 'error', text1: 'Initialization Error', text2: errMsg });
     } finally {
       setIsProcessing(false);
     }

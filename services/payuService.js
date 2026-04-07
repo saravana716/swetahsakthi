@@ -1,18 +1,20 @@
-import { firebase } from '../firebaseConfig'; // Adjust based on your firebase setup
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import PayUPaymentCheckoutPro from 'payu-non-seam-less-react';
+import { functions } from '../firebaseConfig'; 
+import { httpsCallable } from 'firebase/functions';
+import PayUBizSdk from 'payu-non-seam-less-react';
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
-const functions = getFunctions();
 const generatePayUHash = httpsCallable(functions, 'generatePayUHash');
 
 /**
  * PayU Service for Swarna Sakthi
- * Handles dynamic hash generation and SDK launch
+ * Handles dynamic hash generation and SDK launch using PayUBizSdk
  */
 class PayUService {
   constructor() {
-    this.eventEmitter = new NativeEventEmitter(NativeModules.PayUCheckoutProModule);
+    const payuModule = NativeModules.PayUBizSdk;
+    if (payuModule) {
+      this.eventEmitter = new NativeEventEmitter(payuModule);
+    }
   }
 
   /**
@@ -20,71 +22,80 @@ class PayUService {
    * @param {Object} params - { amount, productInfo, firstName, email, phone, txnid }
    */
   async launchPayment(params) {
+    if (!NativeModules.PayUBizSdk) {
+      throw new Error('PayU Native SDK not found. Ensure you are using the Development Build APK.');
+    }
+
     try {
       const { amount, productInfo, firstName, email, phone, txnid } = params;
 
-      // 1. Get Hashes from Backend
-      console.log(`[PayU] Fetching hashes for TXN: ${txnid}...`);
-      const response = await generatePayUHash({
-        txnid,
-        amount: amount.toString(),
-        productinfo: productInfo,
-        firstname: firstName,
-        email: email,
-        udf1: '', udf2: '', udf3: '', udf4: '', udf5: ''
-      });
-
-      const { paymentHash, vasHash, detailsHash, merchantKey } = response.data;
-
-      // 2. Prepare PayU Payment Params
+      // 1. Prepare PayUPaymentParams
       const payUPaymentParams = {
-        key: merchantKey,
+        key: 'merchant_key_placeholder', // Will be replaced by backend during hash generation
         transactionId: txnid,
         amount: amount.toString(),
         productInfo: productInfo,
         firstName: firstName,
         email: email,
         phone: phone,
-        ios_surl: 'https://payu.herokuapp.com/ios_success', // Placeholder
-        ios_furl: 'https://payu.herokuapp.com/ios_failure', // Placeholder
-        android_surl: 'https://payu.herokuapp.com/success', // Placeholder
-        android_furl: 'https://payu.herokuapp.com/failure', // Placeholder
+        android_surl: 'https://payu.herokuapp.com/success',
+        android_furl: 'https://payu.herokuapp.com/failure',
         environment: '1', // 0 for Production, 1 for Test
-        userCredential: `${merchantKey}:${email}`,
-        payuPostUrl: 'https://test.payu.in/_payment', // Set based on env
+        userCredential: `merchant_key:${email}`,
       };
 
-      const payUCheckoutProConfig = {
-        primaryColor: '#EAB308', // Match Gold Theme
-        secondaryColor: '#1C1600',
-        merchantName: 'Swarna Sakthi',
-        merchantLogo: 'logo_url_here',
-        showExitConfirmationOnCheckoutScreen: true,
-        showExitConfirmationOnPaymentScreen: true,
-        cartDetails: [
-           { [productInfo]: amount.toString() }
-        ],
-        paymentHash: paymentHash,
-        vasForMobileSdkHash: vasHash,
-        paymentRelatedDetailsForMobileSdkHash: detailsHash,
-      };
+      // 2. Open SDK with correct method name
+      console.log('[PayU] Launching OpenCheckoutScreen...');
+      PayUBizSdk.openCheckoutScreen(payUPaymentParams);
 
-      // 3. Open SDK
-      console.log('[PayU] Launching SDK...');
-      PayUPaymentCheckoutPro.openCheckoutPro(payUPaymentParams, payUCheckoutProConfig);
+      // 3. Setup Listeners
+      return new Promise((resolve) => {
+        // --- A. HASH GENERATION LISTENER (Mandatory for this SDK) ---
+        const hashSub = this.eventEmitter.addListener('generateHash', async (data) => {
+          try {
+            console.log('[PayU] SDK requested hash for:', data);
+            const response = await generatePayUHash({
+              txnid: txnid,
+              amount: amount.toString(),
+              productinfo: productInfo,
+              firstname: firstName,
+              email: email,
+              ...data // Pass additional params if SDK provides them
+            });
 
-      // 4. Listen for Results
-      return new Promise((resolve, reject) => {
+            // Send hash back to SDK
+            PayUBizSdk.hashGenerated(response.data);
+          } catch (e) {
+            console.error('[PayU] Hash Callback Error:', e);
+          }
+        });
+
+        // --- B. SUCCESS LISTENER ---
         const successSub = this.eventEmitter.addListener('onPaymentSuccess', (response) => {
-          console.log('[PayU] Success:', response);
-          this._removeListeners(successSub, failureSub);
+          console.log('[PayU] Payment Success:', response);
+          this._cleanup(hashSub, successSub, failureSub, cancelSub, errorSub);
           resolve({ status: 'success', data: response });
         });
 
+        // --- C. FAILURE LISTENER ---
         const failureSub = this.eventEmitter.addListener('onPaymentFailure', (response) => {
-          console.log('[PayU] Failure:', response);
-          this._removeListeners(successSub, failureSub);
+          console.log('[PayU] Payment Failure:', response);
+          this._cleanup(hashSub, successSub, failureSub, cancelSub, errorSub);
           resolve({ status: 'failure', data: response });
+        });
+
+        // --- D. CANCEL LISTENER ---
+        const cancelSub = this.eventEmitter.addListener('onPaymentCancel', (response) => {
+          console.log('[PayU] Payment Cancelled:', response);
+          this._cleanup(hashSub, successSub, failureSub, cancelSub, errorSub);
+          resolve({ status: 'cancelled', data: response });
+        });
+
+        // --- E. ERROR LISTENER ---
+        const errorSub = this.eventEmitter.addListener('onError', (response) => {
+          console.error('[PayU] SDK Error:', response);
+          this._cleanup(hashSub, successSub, failureSub, cancelSub, errorSub);
+          resolve({ status: 'error', data: response });
         });
       });
 
@@ -94,9 +105,8 @@ class PayUService {
     }
   }
 
-  _removeListeners(s, f) {
-    if (s) s.remove();
-    if (f) f.remove();
+  _cleanup(...subs) {
+    subs.forEach(s => s && s.remove());
   }
 }
 

@@ -162,10 +162,10 @@ exports.generatePayUHash = functions.https.onCall(async (data, context) => {
         console.log(`[PAYU] Hashes generated for TXN: ${txnid}`);
 
         return {
-            paymentHash,
-            vasHash,
-            detailsHash,
-            merchantKey
+            payment: paymentHash,
+            vas_for_mobile_sdk: vasHash,
+            payment_related_details_for_mobile_sdk: detailsHash,
+            merchantKey: merchantKey
         };
 
     } catch (err) {
