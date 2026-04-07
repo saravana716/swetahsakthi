@@ -97,11 +97,19 @@ project(':payu-non-seam-less-react').projectDir = new File(rootProject.projectDi
 };
 
 function addPhonePeRepo(buildGradle) {
-  const phonePeRepo = `
+  const mirrors = `
+        mavenCentral()
+        google()
+        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url "https://oss.sonatype.org/content/repositories/releases/" }
         maven { url "https://phonepe.mycloudrepo.io/public/repositories/phonepe-intentsdk-android" }`;
+  
+  // Look for allprojects { repositories { ... } }
   const searchPattern = /allprojects\s*{\s*repositories\s*{/;
+  
   if (buildGradle.includes('https://phonepe.mycloudrepo.io/public/repositories/phonepe-intentsdk-android')) {
     return buildGradle;
   }
-  return buildGradle.replace(searchPattern, (match) => `${match}${phonePeRepo}`);
+
+  return buildGradle.replace(searchPattern, (match) => `${match}${mirrors}`);
 }
