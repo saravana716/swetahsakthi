@@ -35,7 +35,7 @@ class PayUService {
       const configResponse = await getPayUMerchantKey();
       const { merchantKey } = configResponse.data;
 
-      // 2. Prepare PayUPaymentParams
+      // 2. Prepare PayUPaymentParams (Including all mandatory and optional UDFs)
       const payUPaymentParams = {
         key: merchantKey,
         transactionId: txnid,
@@ -44,10 +44,17 @@ class PayUService {
         firstName: firstName,
         email: email,
         phone: phone,
+        surl: 'https://payu.herokuapp.com/success', // Redundant for compatibility
+        furl: 'https://payu.herokuapp.com/failure', // Redundant for compatibility
         android_surl: 'https://payu.herokuapp.com/success',
         android_furl: 'https://payu.herokuapp.com/failure',
         environment: '1', // 0 for Production, 1 for Test (Update to '0' for live)
         userCredential: `${merchantKey}:${email}`,
+        udf1: '',
+        udf2: '',
+        udf3: '',
+        udf4: '',
+        udf5: '',
       };
 
       // 3. Open SDK
